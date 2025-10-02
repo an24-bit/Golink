@@ -1,0 +1,15 @@
+{
+  "name": "citybus-ai-webhook",
+  "version": "1.0.0",
+  "description": "Webhook server for CityBus AI assistant (fares, timetables, live tracking).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.5.0",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5"
+  }
+}
