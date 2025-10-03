@@ -13,47 +13,46 @@ app.post("/ticket-prices", async (req, res) => {
     const response = await axios.get("https://www.plymouthbus.co.uk/fares-and-tickets");
     const $ = cheerio.load(response.data);
 
-    // Example scrape: first paragraph text (placeholder)
-    const prices = $("p").first().text();
+    // Grab the page title and first heading (guaranteed to exist)
+    const pageTitle = $("title").text();
+    const heading = $("h1").first().text() || "No heading found";
 
     res.json({
-      reply: `Here’s the latest info on ticket prices: ${prices}`,
+      reply: `Page: ${pageTitle} | First Heading: ${heading}`,
     });
   } catch (err) {
-    console.error(err);
-    res.json({ reply: "Sorry, I couldn’t fetch ticket prices right now." });
+    console.error(err.message);
+    res.json({ reply: "⚠️ Sorry, I couldn’t fetch ticket prices right now." });
   }
 });
 
 // ---- Timetable Intent ----
 app.post("/timetable", async (req, res) => {
   try {
-    // Example: scrape timetables page (placeholder)
     const response = await axios.get("https://www.plymouthbus.co.uk/timetables");
     const $ = cheerio.load(response.data);
 
-    // For demo, just grab the first heading
-    const timetable = $("h1").first().text();
+    const pageTitle = $("title").text();
+    const heading = $("h1").first().text() || "No heading found";
 
     res.json({
-      reply: `Here’s some timetable info: ${timetable}`,
+      reply: `Page: ${pageTitle} | First Heading: ${heading}`,
     });
   } catch (err) {
-    console.error(err);
-    res.json({ reply: "Sorry, I couldn’t fetch timetable info right now." });
+    console.error(err.message);
+    res.json({ reply: "⚠️ Sorry, I couldn’t fetch timetable info right now." });
   }
 });
 
 // ---- Live Tracking Intent ----
 app.post("/live-tracking", async (req, res) => {
   try {
-    // Placeholder (normally you'd hit their live tracker API)
     res.json({
-      reply: "Live tracking is not yet connected, but this is where it will respond.",
+      reply: "Live tracking placeholder ✅ (API not connected yet).",
     });
   } catch (err) {
-    console.error(err);
-    res.json({ reply: "Sorry, I couldn’t fetch live tracking info right now." });
+    console.error(err.message);
+    res.json({ reply: "⚠️ Sorry, I couldn’t fetch live tracking info right now." });
   }
 });
 
@@ -65,5 +64,5 @@ app.get("/", (req, res) => {
 // ---- Start Server ----
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
