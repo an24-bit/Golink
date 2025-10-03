@@ -7,18 +7,14 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// --- Root route ---
-app.get("/", (req, res) => {
-  res.send("✅ CityBus AI Webhook is live! Use /ticket-prices to test.");
-});
-
-// --- Tickets Intent (GET version for browser test) ---
+// --- Tickets Intent ---
 app.get("/ticket-prices", async (req, res) => {
   try {
+    // Example: scrape fares page
     const response = await axios.get("https://www.plymouthbus.co.uk/fares-and-tickets");
     const $ = cheerio.load(response.data);
 
-    // just grab some visible text as placeholder
+    // Just a placeholder – refine later with exact selectors
     const prices = $("p").first().text();
 
     res.json({
@@ -30,11 +26,12 @@ app.get("/ticket-prices", async (req, res) => {
   }
 });
 
-// Start server (Render will use this)
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚍 Server running on port ${PORT}`));
-
+// Health check
+app.get("/", (req, res) => {
+  res.send("CityBus AI Webhook is running 🚍");
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`)); 
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
