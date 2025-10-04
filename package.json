@@ -1,7 +1,7 @@
 {
   "name": "citybus-ai-webhook",
   "version": "1.0.0",
-  "description": "Webhook service for Plymouth Citybus AI assistant to fetch live vehicles and stops.",
+  "description": "Webhook service for Plymouth Citybus AI assistant",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -10,10 +10,6 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "axios": "^1.6.8",
-    "cheerio": "^1.0.0-rc.12",
-    "cors": "^2.8.5",
-    "puppeteer": "^22.6.3",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
@@ -24,9 +20,6 @@
   },
   "keywords": [
     "express",
-    "axios",
-    "fetch",
-    "puppeteer",
     "citybus",
     "webhook",
     "plymouthbus"
