@@ -1,63 +1,99 @@
 import express from "express";
-import fetch from "node-fetch";
+import puppeteer from "puppeteer";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Root check
+// Utility: Launch Puppeteer safely on Render
+async function launchBrowser() {
+  return await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote"
+    ]
+  });
+}
+
+// Root route
 app.get("/", (req, res) => {
-  res.send("🚌 Citybus AI Webhook is running with Puppeteer");
+  res.send("🚍 Citybus AI Webhook is running with Puppeteer");
 });
 
-// Live vehicles
+// Fetch live vehicles
 app.get("/live-vehicles", async (req, res) => {
   try {
-    const url = "https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles";
-    const response = await fetch(url, {
-      headers: {
-        "accept": "*/*",
-        "x-requested-with": "XMLHttpRequest",
-        "user-agent": "Mozilla/5.0"
-      }
+    const browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.goto("https://www.plymouthbus.co.uk", {
+      waitUntil: "networkidle2",
+      timeout: 60000
     });
-    const data = await response.json();
-    res.json(data);
+
+    // Intercept API requests for vehicles
+    const vehiclesData = await page.evaluate(async () => {
+      const resp = await fetch("/_ajax/hirevehicles/vehicles");
+      return resp.json();
+    });
+
+    await browser.close();
+    res.json(vehiclesData);
   } catch (err) {
-    console.error("❌ Error fetching live vehicles:", err.message);
+    console.error("❌ Error fetching vehicles:", err);
     res.status(500).json({ error: "⚠️ Could not fetch live vehicles" });
   }
 });
 
-// Stops
+// Fetch stops
 app.get("/stops", async (req, res) => {
   try {
-    const url = "https://plymouthbus.arcticapi.com/network/stops.geojson";
-    const response = await fetch(url, {
-      headers: { "user-agent": "Mozilla/5.0" }
+    const browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.goto("https://www.plymouthbus.co.uk", {
+      waitUntil: "networkidle2",
+      timeout: 60000
     });
-    const data = await response.json();
-    res.json(data);
+
+    const stopsData = await page.evaluate(async () => {
+      const resp = await fetch("/_ajax/stops/118000021/vehicles"); 
+      return resp.json();
+    });
+
+    await browser.close();
+    res.json(stopsData);
   } catch (err) {
-    console.error("❌ Error fetching stops:", err.message);
+    console.error("❌ Error fetching stops:", err);
     res.status(500).json({ error: "⚠️ Could not fetch stops" });
   }
 });
 
-// Timetables
+// Fetch timetables
 app.get("/timetables", async (req, res) => {
   try {
-    const url = "https://www.plymouthbus.co.uk/_ajax/timetables"; 
-    const response = await fetch(url, {
-      headers: { "user-agent": "Mozilla/5.0" }
+    const browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.goto("https://www.plymouthbus.co.uk", {
+      waitUntil: "networkidle2",
+      timeout: 60000
     });
-    const text = await response.text();
-    res.send(text);
+
+    const timetableData = await page.evaluate(async () => {
+      const resp = await fetch("/_ajax/stops/118000021/vehicles"); 
+      return resp.json();
+    });
+
+    await browser.close();
+    res.json(timetableData);
   } catch (err) {
-    console.error("❌ Error fetching timetables:", err.message);
+    console.error("❌ Error fetching timetables:", err);
     res.status(500).json({ error: "⚠️ Could not fetch timetables" });
   }
 });
 
+// Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚍 Server running on port ${PORT}`);
 });
