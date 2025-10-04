@@ -1,82 +1,63 @@
 import express from "express";
-import puppeteer from "puppeteer";
+import fetch from "node-fetch";
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// Root endpoint
+// Root check
 app.get("/", (req, res) => {
   res.send("🚌 Citybus AI Webhook is running with Puppeteer");
 });
 
-// Get live vehicles
+// Live vehicles
 app.get("/live-vehicles", async (req, res) => {
   try {
-    const browser = await puppeteer.launch({
-      headless: "new", // latest headless mode
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    const url = "https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles";
+    const response = await fetch(url, {
+      headers: {
+        "accept": "*/*",
+        "x-requested-with": "XMLHttpRequest",
+        "user-agent": "Mozilla/5.0"
+      }
     });
-
-    const page = await browser.newPage();
-
-    // Go directly to the vehicles API endpoint
-    await page.setExtraHTTPHeaders({
-      "x-requested-with": "XMLHttpRequest"
-    });
-
-    await page.goto("https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles", {
-      waitUntil: "networkidle2"
-    });
-
-    // Get page content (which should be JSON)
-    const content = await page.evaluate(() => document.body.innerText);
-
-    await browser.close();
-
-    try {
-      res.json(JSON.parse(content));
-    } catch (e) {
-      res.send(content);
-    }
+    const data = await response.json();
+    res.json(data);
   } catch (err) {
-    console.error("❌ Puppeteer error:", err.message);
+    console.error("❌ Error fetching live vehicles:", err.message);
     res.status(500).json({ error: "⚠️ Could not fetch live vehicles" });
   }
 });
 
-// Get stops
+// Stops
 app.get("/stops", async (req, res) => {
   try {
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    const url = "https://plymouthbus.arcticapi.com/network/stops.geojson";
+    const response = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0" }
     });
-
-    const page = await browser.newPage();
-
-    await page.setExtraHTTPHeaders({
-      "x-requested-with": "XMLHttpRequest"
-    });
-
-    await page.goto("https://plymouthbus.arcticapi.com/network/stops.geojson", {
-      waitUntil: "networkidle2"
-    });
-
-    const content = await page.evaluate(() => document.body.innerText);
-
-    await browser.close();
-
-    try {
-      res.json(JSON.parse(content));
-    } catch (e) {
-      res.send(content);
-    }
+    const data = await response.json();
+    res.json(data);
   } catch (err) {
-    console.error("❌ Puppeteer error:", err.message);
+    console.error("❌ Error fetching stops:", err.message);
     res.status(500).json({ error: "⚠️ Could not fetch stops" });
   }
 });
 
+// Timetables
+app.get("/timetables", async (req, res) => {
+  try {
+    const url = "https://www.plymouthbus.co.uk/_ajax/timetables"; 
+    const response = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0" }
+    });
+    const text = await response.text();
+    res.send(text);
+  } catch (err) {
+    console.error("❌ Error fetching timetables:", err.message);
+    res.status(500).json({ error: "⚠️ Could not fetch timetables" });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
