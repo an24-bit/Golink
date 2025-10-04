@@ -1,93 +1,67 @@
 const express = require("express");
 const axios = require("axios");
-const cheerio = require("cheerio");
 const cors = require("cors");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// ============================
-// LIVE VEHICLES (Real-time buses)
-// ============================
+// ---- Ticket Prices ----
+app.post("/ticket-prices", async (req, res) => {
+  try {
+    const response = await axios.get("https://www.plymouthbus.co.uk/fares-and-tickets");
+    res.json({ reply: "✅ Ticket prices page: https://www.plymouthbus.co.uk/fares-and-tickets" });
+  } catch (err) {
+    console.error(err);
+    res.json({ reply: "⚠️ Could not fetch ticket prices" });
+  }
+});
+
+// ---- Timetables ----
+app.post("/timetable", async (req, res) => {
+  try {
+    const response = await axios.get("https://www.plymouthbus.co.uk/timetables");
+    res.json({ reply: "✅ Timetables page: https://www.plymouthbus.co.uk/timetables" });
+  } catch (err) {
+    console.error(err);
+    res.json({ reply: "⚠️ Could not fetch timetable info" });
+  }
+});
+
+// ---- Live Vehicles ----
 app.get("/live-vehicles", async (req, res) => {
   try {
-    const response = await axios.get("https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles");
-    res.json(response.data);
+    const response = await axios.get("https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",      // copy from your headers
+        "Accept": "*/*",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+
+    res.json(response.data); // returns live bus JSON
   } catch (err) {
-    console.error("Live vehicles error:", err.message);
+    console.error("Live vehicles fetch failed:", err.message);
     res.json({ error: "⚠️ Could not fetch live vehicles" });
   }
 });
 
-// ============================
-// BUS STOPS (GeoJSON data)
-// ============================
+// ---- Stops ----
 app.get("/stops", async (req, res) => {
   try {
     const response = await axios.get("https://plymouthbus.arcticapi.com/network/stops.geojson");
     res.json(response.data);
   } catch (err) {
-    console.error("Stops error:", err.message);
+    console.error("Stops fetch failed:", err.message);
     res.json({ error: "⚠️ Could not fetch bus stops" });
   }
 });
 
-// ============================
-// TICKET PRICES (scrape fares page)
-// ============================
-app.get("/ticket-prices", async (req, res) => {
-  try {
-    const response = await axios.get("https://www.plymouthbus.co.uk/fares-and-tickets");
-    const $ = cheerio.load(response.data);
-
-    const fares = $(".content-page p, .content-page li")
-      .map((i, el) => $(el).text().trim())
-      .get()
-      .filter(txt => txt.length > 0)
-      .join("\n");
-
-    res.json({
-      reply: fares || "⚠️ No fare info found.",
-    });
-  } catch (err) {
-    console.error("Ticket prices error:", err.message);
-    res.json({ error: "⚠️ Could not fetch ticket prices" });
-  }
-});
-
-// ============================
-// TIMETABLES (scrape timetable page)
-// ============================
-app.get("/timetables", async (req, res) => {
-  try {
-    const response = await axios.get("https://www.plymouthbus.co.uk/timetables");
-    const $ = cheerio.load(response.data);
-
-    const timetables = $(".content-page h2, .content-page h3")
-      .map((i, el) => $(el).text().trim())
-      .get()
-      .filter(txt => txt.length > 0)
-      .join("\n");
-
-    res.json({
-      reply: timetables || "⚠️ No timetable info found.",
-    });
-  } catch (err) {
-    console.error("Timetables error:", err.message);
-    res.json({ error: "⚠️ Could not fetch timetables" });
-  }
-});
-
-// ============================
-// Health Check
-// ============================
+// ---- Health Check ----
 app.get("/", (req, res) => {
-  res.send("✅ Citybus AI Webhook is running with LIVE APIs for vehicles, stops, tickets, and timetables");
+  res.send("✅ Citybus AI Webhook is running");
 });
 
-// ============================
-// Start Server
-// ============================
+// ---- Start ----
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
+app.listen(PORT, () => console.log(`🚍 Server running on port ${PORT}`));
