@@ -1,60 +1,82 @@
 import express from "express";
-import fetch from "node-fetch";
+import puppeteer from "puppeteer";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// root check
+// Root endpoint
 app.get("/", (req, res) => {
-  res.send("🚌 Citybus AI Webhook is running");
+  res.send("🚌 Citybus AI Webhook is running with Puppeteer");
 });
 
-// fetch live vehicle positions
+// Get live vehicles
 app.get("/live-vehicles", async (req, res) => {
   try {
-    const response = await fetch("https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles", {
-      headers: {
-        "accept": "application/json, text/javascript, */*; q=0.01",
-        "x-requested-with": "XMLHttpRequest",
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-      }
+    const browser = await puppeteer.launch({
+      headless: "new", // latest headless mode
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch vehicles: ${response.status}`);
-    }
+    const page = await browser.newPage();
 
-    const data = await response.json();
-    res.json(data);
+    // Go directly to the vehicles API endpoint
+    await page.setExtraHTTPHeaders({
+      "x-requested-with": "XMLHttpRequest"
+    });
+
+    await page.goto("https://www.plymouthbus.co.uk/_ajax/hirevehicles/vehicles", {
+      waitUntil: "networkidle2"
+    });
+
+    // Get page content (which should be JSON)
+    const content = await page.evaluate(() => document.body.innerText);
+
+    await browser.close();
+
+    try {
+      res.json(JSON.parse(content));
+    } catch (e) {
+      res.send(content);
+    }
   } catch (err) {
-    console.error("Live vehicles fetch error:", err);
+    console.error("❌ Puppeteer error:", err.message);
     res.status(500).json({ error: "⚠️ Could not fetch live vehicles" });
   }
 });
 
-// fetch stops data
+// Get stops
 app.get("/stops", async (req, res) => {
   try {
-    const response = await fetch("https://plymouthbus.arcticapi.com/network/stops.geojson", {
-      headers: {
-        "accept": "application/json, text/javascript, */*; q=0.01",
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-      }
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch stops: ${response.status}`);
-    }
+    const page = await browser.newPage();
 
-    const data = await response.json();
-    res.json(data);
+    await page.setExtraHTTPHeaders({
+      "x-requested-with": "XMLHttpRequest"
+    });
+
+    await page.goto("https://plymouthbus.arcticapi.com/network/stops.geojson", {
+      waitUntil: "networkidle2"
+    });
+
+    const content = await page.evaluate(() => document.body.innerText);
+
+    await browser.close();
+
+    try {
+      res.json(JSON.parse(content));
+    } catch (e) {
+      res.send(content);
+    }
   } catch (err) {
-    console.error("Stops fetch error:", err);
-    res.status(500).json({ error: "⚠️ Could not fetch stops info" });
+    console.error("❌ Puppeteer error:", err.message);
+    res.status(500).json({ error: "⚠️ Could not fetch stops" });
   }
 });
 
-// start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
