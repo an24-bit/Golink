@@ -1,99 +1,53 @@
 import express from "express";
-import puppeteer from "puppeteer";
+import fetch from "node-fetch";
+import { Configuration, OpenAIApi } from "openai";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BING_KEY = process.env.BING_KEY;       // Bing Search or SerpAPI key
+const OPENAI_KEY = process.env.OPENAI_KEY;
 
-// Utility: Launch Puppeteer safely on Render
-async function launchBrowser() {
-  return await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--no-zygote"
-    ]
-  });
-}
+const openai = new OpenAIApi(new Configuration({ apiKey: OPENAI_KEY }));
 
-// Root route
-app.get("/", (req, res) => {
-  res.send("🚍 Citybus AI Webhook is running with Puppeteer");
-});
+app.get("/", (_, res) => res.send("🤖 Live Travel Assistant running"));
 
-// Fetch live vehicles
-app.get("/live-vehicles", async (req, res) => {
+// ------------------------------------------------------------------
+app.get("/ask", async (req, res) => {
+  const q = req.query.q;
+  if (!q) return res.status(400).json({ error: "missing ?q=question" });
+
   try {
-    const browser = await launchBrowser();
-    const page = await browser.newPage();
-    await page.goto("https://www.plymouthbus.co.uk", {
-      waitUntil: "networkidle2",
-      timeout: 60000
+    // 1️⃣ search the web safely
+    const bingUrl =
+      `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(q)}`;
+    const r = await fetch(bingUrl, { headers: { "Ocp-Apim-Subscription-Key": BING_KEY }});
+    const data = await r.json();
+
+    // 2️⃣ collect top few snippets
+    const snippets = data.webPages?.value?.slice(0, 3)
+      .map(p => `${p.name}: ${p.snippet}`).join("\n");
+
+    // 3️⃣ summarise using OpenAI
+    const gptPrompt = `Question: ${q}
+Below are short snippets from web search results. 
+Create a short spoken-style answer based only on these snippets.
+Snippets:\n${snippets}`;
+
+    const gpt = await openai.createChatCompletion({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: gptPrompt }],
+      max_tokens: 150,
+      temperature: 0.3
     });
 
-    // Intercept API requests for vehicles
-    const vehiclesData = await page.evaluate(async () => {
-      const resp = await fetch("/_ajax/hirevehicles/vehicles");
-      return resp.json();
-    });
+    const answer = gpt.data.choices[0].message.content.trim();
+    res.json({ answer });
 
-    await browser.close();
-    res.json(vehiclesData);
   } catch (err) {
-    console.error("❌ Error fetching vehicles:", err);
-    res.status(500).json({ error: "⚠️ Could not fetch live vehicles" });
+    console.error("Error:", err);
+    res.status(500).json({ error: "search or summary failed" });
   }
 });
+// ------------------------------------------------------------------
 
-// Fetch stops
-app.get("/stops", async (req, res) => {
-  try {
-    const browser = await launchBrowser();
-    const page = await browser.newPage();
-    await page.goto("https://www.plymouthbus.co.uk", {
-      waitUntil: "networkidle2",
-      timeout: 60000
-    });
-
-    const stopsData = await page.evaluate(async () => {
-      const resp = await fetch("/_ajax/stops/118000021/vehicles"); 
-      return resp.json();
-    });
-
-    await browser.close();
-    res.json(stopsData);
-  } catch (err) {
-    console.error("❌ Error fetching stops:", err);
-    res.status(500).json({ error: "⚠️ Could not fetch stops" });
-  }
-});
-
-// Fetch timetables
-app.get("/timetables", async (req, res) => {
-  try {
-    const browser = await launchBrowser();
-    const page = await browser.newPage();
-    await page.goto("https://www.plymouthbus.co.uk", {
-      waitUntil: "networkidle2",
-      timeout: 60000
-    });
-
-    const timetableData = await page.evaluate(async () => {
-      const resp = await fetch("/_ajax/stops/118000021/vehicles"); 
-      return resp.json();
-    });
-
-    await browser.close();
-    res.json(timetableData);
-  } catch (err) {
-    console.error("❌ Error fetching timetables:", err);
-    res.status(500).json({ error: "⚠️ Could not fetch timetables" });
-  }
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚍 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
