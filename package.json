@@ -1,34 +1,20 @@
 {
   "name": "citybus-ai-webhook",
-  "version": "2.0.0",
-  "description": "Live Travel Assistant — Express server using OpenAI + Bing Search API to fetch and summarise real-time travel info.",
+  "version": "1.2.0",
+  "description": "Webhook service for Plymouth Citybus AI assistant using Bing Search + OpenAI GPT-4o-mini.",
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
     "node-fetch": "^3.3.2",
-    "openai": "^4.0.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
+    "openai": "^4.58.1"
   },
   "engines": {
     "node": ">=18.x"
   },
-  "keywords": [
-    "express",
-    "openai",
-    "bing",
-    "serpapi",
-    "ai",
-    "travel",
-    "assistant",
-    "webhook"
-  ],
   "author": "Ali",
   "license": "MIT"
 }
