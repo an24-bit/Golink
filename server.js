@@ -6,10 +6,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // environment keys
-const BING_KEY = process.env.BING_KEY;       // your Bing Search or SerpAPI key
-const OPENAI_KEY = process.env.OPENAI_KEY;   // your OpenAI API key
+const BING_KEY = process.env.BING_KEY;       // Bing Search or SerpAPI key
+const OPENAI_KEY = process.env.OPENAI_KEY;   // OpenAI API key
 
-// initialize OpenAI client
+// initialise OpenAI client
 const openai = new OpenAI({
   apiKey: OPENAI_KEY
 });
@@ -25,6 +25,8 @@ app.get("/ask", async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: "missing ?q=question" });
 
+  console.log(`🟢 New request received: "${q}"`);
+
   try {
     // 1️⃣ search Bing for context
     const bingUrl = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(q)}`;
@@ -38,7 +40,7 @@ app.get("/ask", async (req, res) => {
       ?.map(p => `${p.name}: ${p.snippet}`)
       .join("\n") || "No snippets found.";
 
-    // 3️⃣ generate short spoken-style summary
+    // 3️⃣ summarise with OpenAI
     const gptPrompt = `Question: ${q}
 Below are short snippets from web search results.
 Create a short, natural spoken-style answer based only on these snippets.
@@ -54,10 +56,17 @@ ${snippets}`;
     });
 
     const answer = gpt.choices[0].message.content.trim();
+
+    // log both question and answer
+    console.log("------------------------------------------------");
+    console.log(`❓ Question: ${q}`);
+    console.log(`💬 Answer: ${answer}`);
+    console.log("------------------------------------------------");
+
     res.json({ question: q, answer });
 
   } catch (err) {
-    console.error("Error:", err);
+    console.error("🚨 Error:", err);
     res.status(500).json({ error: "search or summary failed", details: err.message });
   }
 });
@@ -65,5 +74,5 @@ ${snippets}`;
 
 // start server
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`✅ Server listening on port ${PORT}`);
 });
