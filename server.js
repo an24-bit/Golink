@@ -198,7 +198,7 @@ If no data is available, guide the user on where to find information instead.
   }
 }
 
-// --- Google Custom Search with Smart Fallback ---
+// --- Google Custom Search with Smart Fallback & Page Filtering ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
     console.log("❌ Missing Google API credentials.");
@@ -212,7 +212,7 @@ async function handleWebSearch(query, res) {
 
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
       query
-    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=3`;
+    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=5`;
 
     const searchRes = await fetch(googleUrl);
     const data = await searchRes.json();
@@ -224,40 +224,50 @@ async function handleWebSearch(query, res) {
       });
     }
 
-    // Try to find an accessible result
     let validPage = null;
+
     for (const item of data.items) {
       const url = item.link;
-      console.log(`🔎 Checking ${url}`);
+      console.log(`🔎 Checking: ${url}`);
+
       try {
         const html = await fetch(url).then((r) => r.text());
+
+        // --- Blocked or useless content filters ---
         if (
-          html &&
-          html.length > 500 &&
-          !html.includes("enable JavaScript") &&
-          !html.includes("Cloudflare")
+          !html ||
+          html.length < 800 ||
+          html.includes("enable JavaScript") ||
+          html.includes("cookies are required") ||
+          html.includes("Cloudflare") ||
+          html.includes("Access denied") ||
+          html.includes("verify you are human")
         ) {
-          validPage = { url, html };
-          break;
+          console.log(`🚫 Skipping blocked/unusable: ${url}`);
+          continue;
         }
-      } catch (e) {
-        console.log(`⚠️ Skipping blocked or invalid URL: ${url}`);
+
+        validPage = { url, html };
+        break;
+      } catch (err) {
+        console.log(`⚠️ Error fetching ${url}:`, err.message);
       }
     }
 
     if (!validPage) {
+      console.log("⚠️ All results blocked.");
       return res.json({
         question: query,
         answer:
-          "I tried checking official sources, but some websites block automated access. You can visit www.plymouthbus.co.uk directly for live timetables.",
+          "I tried checking official sources, but some websites block automated access. You can visit www.plymouthbus.co.uk directly for live timetables or use bustimes.org for route details.",
       });
     }
 
-    // Extract clean readable text
+    // --- Extract main readable content ---
     const $ = cheerio.load(validPage.html);
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
 
-    // Summarise with OpenAI
+    // --- Summarise with OpenAI ---
     const aiSummaryRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -270,7 +280,7 @@ async function handleWebSearch(query, res) {
           {
             role: "system",
             content:
-              "Summarise this travel or transport information in 2–3 clear, friendly sentences for a passenger.",
+              "You are Transi Autopilot. Summarise this transport or bus information in 2–3 short, friendly sentences suitable for a passenger. If the text looks unrelated or broken, say it's unreadable.",
           },
           { role: "user", content: text },
         ],
@@ -285,7 +295,7 @@ async function handleWebSearch(query, res) {
     console.log("🧠 AI summary generated successfully.");
     return res.json({
       question: query,
-      answer: `${summary}\n\n(Source: ${validPage.url})`,
+      answer: `Here’s a quick summary I found online:\n\n${summary}\n\n(Source: ${validPage.url})`,
     });
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
