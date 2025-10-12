@@ -7,20 +7,17 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>🚌 <span>Transi AI Assistant</span></h1>
-    <p class="subtitle">Ask me anything about transport, routes, or travel.</p>
+  <h1>🚍 Transi AI Assistant</h1>
+  <p class="subtitle">Ask me anything about buses, fares, routes, or travel in Plymouth & South West.</p>
 
-    <div class="input-box">
-      <input type="text" id="question" placeholder="Type your question..." />
-      <button id="askBtn">Ask</button>
-    </div>
-
-    <div id="responseBox" class="response-box">Waiting for your question...</div>
-    <div id="audioBox" class="audio-box" style="display:none;">
-      <button id="speakBtn">🔊 Read Aloud</button>
-    </div>
+  <div class="chat-box">
+    <input id="question" type="text" placeholder="Ask a question..." />
+    <button id="askBtn">Ask</button>
   </div>
+
+  <div id="responseBox" class="response-box">Hello there! I’m Transi AI — ready to help you with live buses, tickets, and routes.</div>
+
+  <button id="speakBtn">🔊 Read Aloud</button>
 
   <script src="script.js"></script>
 </body>
