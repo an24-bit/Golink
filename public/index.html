@@ -5,43 +5,73 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Transi Autopilot Assistant</title>
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Leaflet Map Library -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-o9N1jUuCj36Nvb+3b94A3HCGsF4xHn+ZRY2zE4y+4RA="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9S0TjW+sR5EmK6C7XwKgh4n+nR6A0Ex+o5aU5Xqz3E="
+    crossorigin=""
+  ></script>
+
   <style>
     body {
+      margin: 0;
       font-family: system-ui, sans-serif;
-      background: #111;
-      color: #f2f2f2;
-      text-align: center;
-      padding: 40px;
+      background: #0f0f0f;
+      color: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
     }
     h1 {
       color: #a78bfa;
-      font-size: 2rem;
+      margin-top: 30px;
+      font-size: 1.8rem;
     }
     #welcome {
-      font-size: 1.1rem;
-      color: #ddd;
-      margin-bottom: 30px;
-      line-height: 1.6;
+      text-align: center;
+      color: #ccc;
+      max-width: 700px;
+      line-height: 1.5;
+      margin: 10px 20px 30px;
     }
-    .chat-box {
+    #map {
+      height: 280px;
+      width: 90%;
+      max-width: 750px;
+      border-radius: 10px;
       margin-bottom: 20px;
     }
+    .chat-box {
+      display: flex;
+      justify-content: center;
+      width: 90%;
+      max-width: 750px;
+      margin-bottom: 15px;
+    }
     input {
-      width: 70%;
+      flex: 1;
       padding: 12px;
       border-radius: 6px;
       border: none;
       font-size: 1rem;
-      margin-right: 5px;
       outline: none;
     }
     button {
-      padding: 12px 18px;
+      margin-left: 6px;
+      padding: 12px 16px;
       border-radius: 6px;
       border: none;
-      cursor: pointer;
       background: #4e89ff;
       color: #fff;
+      cursor: pointer;
       font-size: 1rem;
       transition: background 0.2s;
     }
@@ -49,23 +79,25 @@
       background: #3c6fe0;
     }
     .response-box {
-      margin-top: 25px;
+      width: 90%;
+      max-width: 750px;
       padding: 18px;
-      background: #222;
+      background: #1a1a1a;
       border-radius: 10px;
-      width: 80%;
-      margin-left: auto;
-      margin-right: auto;
       font-size: 1.05rem;
       line-height: 1.5;
-      text-align: left;
+      margin-bottom: 20px;
     }
-    #speakBtn, #voiceBtn, #mapBtn {
-      margin-top: 20px;
+    #speakBtn {
+      background: #7c3aed;
+    }
+    #speakBtn:hover {
+      background: #6d28d9;
     }
     audio {
-      margin-top: 20px;
-      width: 80%;
+      width: 90%;
+      max-width: 750px;
+      margin-top: 15px;
     }
   </style>
 </head>
@@ -73,112 +105,49 @@
 <body>
   <h1>🚌 Transi Autopilot Assistant</h1>
   <p id="welcome">
-    Hello there! I'm Transi Autopilot — your travel assistant for buses, tickets, and routes.<br>
-    You can type or speak your question, and I'll find the latest info for you.
+    Hi there! I’m Transi Autopilot — your live travel assistant for Plymouth & the South West.<br>
+    I can help you with buses, routes, fares, and travel updates. You can type or speak your question.
   </p>
 
+  <div id="map"></div>
+
   <div class="chat-box">
-    <input id="question" type="text" placeholder="Type or speak your question..." />
+    <input id="question" type="text" placeholder="Type or say your question..." />
     <button id="askBtn">Ask</button>
-    <button id="voiceBtn">🎤 Speak</button>
+    <button id="voiceBtn">🎤</button>
   </div>
 
   <div id="responseBox" class="response-box">
-    Ready when you are — ask me about live buses, fares, or routes!
+    Ready when you are — ask me about live buses, routes or fares!
   </div>
 
   <button id="speakBtn">🔊 Read Aloud</button>
-  <button id="mapBtn">🗺️ Show Map</button>
   <audio id="audioBox" controls hidden></audio>
 
-  <!-- ================= Main JS ================= -->
+  <script src="script.js"></script>
+
+  <!-- Initialise map + voice greeting -->
   <script>
-    const askBtn = document.getElementById("askBtn");
-    const voiceBtn = document.getElementById("voiceBtn");
-    const speakBtn = document.getElementById("speakBtn");
-    const mapBtn = document.getElementById("mapBtn");
-    const responseBox = document.getElementById("responseBox");
+    let map;
 
-    let lastLat = null;
-    let lastLon = null;
-    let lastStopName = null;
-
-    // --- Ask button click handler ---
-    askBtn.addEventListener("click", () => askQuestion());
-
-    // --- Enter key trigger ---
-    document.getElementById("question").addEventListener("keypress", (e) => {
-      if (e.key === "Enter") askQuestion();
-    });
-
-    // --- Speech input ---
-    voiceBtn.addEventListener("click", () => {
-      const recognition =
-        new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      recognition.lang = "en-GB";
-      recognition.start();
-      recognition.onresult = async (event) => {
-        const q = event.results[0][0].transcript;
-        document.getElementById("question").value = q;
-        askQuestion();
-      };
-    });
-
-    // --- Read answer aloud ---
-    speakBtn.addEventListener("click", () => {
-      const answer = responseBox.textContent;
-      const utterance = new SpeechSynthesisUtterance(answer);
-      utterance.lang = "en-GB";
-      utterance.pitch = 1;
-      utterance.rate = 1;
-      speechSynthesis.speak(utterance);
-    });
-
-    // --- Ask question with live location ---
-    async function askQuestion() {
-      const q = document.getElementById("question").value.trim();
-      if (!q) return;
-      responseBox.innerText = "Fetching your answer...";
-
-      // Get GPS
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          lastLat = pos.coords.latitude;
-          lastLon = pos.coords.longitude;
-
-          const response = await fetch(
-            `/ask?q=${encodeURIComponent(q)}&lat=${lastLat}&lon=${lastLon}`
-          );
-          const data = await response.json();
-
-          responseBox.innerText = data.answer || "No response received.";
-
-          // Extract bus stop name from answer if present
-          const stopMatch = data.answer?.match(/From (.*?)\,/i);
-          if (stopMatch) lastStopName = stopMatch[1];
-        },
-        async () => {
-          const response = await fetch(`/ask?q=${encodeURIComponent(q)}`);
-          const data = await response.json();
-          responseBox.innerText = data.answer || "No response received.";
-        }
-      );
+    function initMap(lat = 50.3755, lon = -4.1427) {
+      map = L.map("map").setView([lat, lon], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+      }).addTo(map);
+      L.marker([lat, lon]).addTo(map).bindPopup("You are here").openPopup();
     }
 
-    // --- Show map to nearest stop ---
-    mapBtn.addEventListener("click", () => {
-      if (lastLat && lastLon && lastStopName) {
-        const mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${lastLat},${lastLon}&destination=${encodeURIComponent(lastStopName)}+bus+stop`;
-        window.open(mapUrl, "_blank");
-      } else if (lastLat && lastLon) {
-        const mapUrl = `https://www.google.com/maps/@${lastLat},${lastLon},15z`;
-        window.open(mapUrl, "_blank");
-      } else {
-        alert("Ask a question first so I can detect your location.");
-      }
-    });
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          initMap(latitude, longitude);
+        },
+        () => initMap()
+      );
+    } else initMap();
 
-    // --- Welcome voice greeting ---
     window.addEventListener("load", () => {
       const greeting =
         "Welcome to Transi Autopilot Assistant. How can I help you today?";
