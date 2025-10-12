@@ -1,6 +1,6 @@
 {
   "name": "transi-ai",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Transi AI – South West UK transport assistant with text and voice support",
   "main": "server.js",
   "type": "module",
@@ -13,8 +13,7 @@
     "node-fetch": "^3.3.2",
     "fs-extra": "^11.2.0",
     "openai": "^4.58.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
@@ -22,19 +21,7 @@
   "engines": {
     "node": ">=18.x"
   },
-  "keywords": [
-    "transi",
-    "transport",
-    "AI",
-    "voice",
-    "tts",
-    "uk",
-    "southwest",
-    "assistant"
-  ],
+  "keywords": ["transi", "transport", "AI", "voice", "uk", "southwest", "assistant"],
   "author": "Ali",
-  "license": "MIT",
-  "render": {
-    "startCommand": "node server.js"
-  }
+  "license": "MIT"
 }
