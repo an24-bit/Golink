@@ -14,6 +14,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// --- Middleware ---
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
@@ -24,13 +25,25 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;
 
-// --- Homepage Route ---
+// --- Homepage ---
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
   console.log("🟢 Visitor opened Transi Autopilot");
 });
 
-// --- Main Assistant Route ---
+// --- Health / Debug Route ---
+app.get("/debug", (req, res) => {
+  res.json({
+    status: "✅ Transi Autopilot is running",
+    environment: process.env.NODE_ENV || "production",
+    transportAPI: !!APP_KEY,
+    openAI: !!OPENAI_API_KEY,
+    googleSearch: !!GOOGLE_API_KEY && !!GOOGLE_CX_ID,
+    port: PORT
+  });
+});
+
+// --- Main Assistant Endpoint ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
   console.log(`💬 User asked: ${question}`);
@@ -38,12 +51,12 @@ app.get("/ask", async (req, res) => {
   if (!question.trim()) {
     return res.json({
       answer:
-        "Hello there! I’m Transi Autopilot — your friendly transport assistant for Plymouth & the South West. You can ask things like 'Next 43 from Royal Parade?', 'Lost wallet on bus 21', or 'How much is a single ticket to Devonport?'.",
+        "Hello there! I’m Transi Autopilot — your friendly travel assistant for Plymouth & the South West. You can ask things like: 'Next 43 from Royal Parade?', 'Lost wallet on bus 21?', or 'Ticket price to Exeter?'.",
     });
   }
 
   try {
-    // --- Lost Property or General Questions ---
+    // Lost property or contact queries
     if (
       question.includes("lost") ||
       question.includes("found") ||
@@ -83,32 +96,22 @@ app.get("/ask", async (req, res) => {
       const data = await response.json();
 
       if (!data?.departures) {
-        console.log("⚠️ No live data, switching to web search...");
+        console.log("⚠️ No live bus data, switching to web search...");
         return await handleWebSearch(question, res);
       }
 
-      const routeKeys = Object.keys(data.departures);
-      const allRoutes = routeKeys.flatMap((route) =>
-        data.departures[route].slice(0, 3).map(
+      const routes = Object.keys(data.departures);
+      const allBuses = routes.flatMap((r) =>
+        data.departures[r].slice(0, 3).map(
           (bus) => `${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`
         )
       );
 
-      const answer = `Here’s what I found — upcoming buses from ${stopName}: ${allRoutes.join(", ")}.`;
+      const answer = `Here’s what I found — upcoming buses from ${stopName}: ${allBuses.join(", ")}.`;
       return res.json({ question, answer });
     }
 
-    // --- Journey or Route Planning ---
-    if (
-      question.includes("go to") ||
-      question.includes("get to") ||
-      question.includes("travel to") ||
-      question.includes("how do i")
-    ) {
-      return await handleWebSearch(question, res);
-    }
-
-    // --- Fare Info ---
+    // --- Fares / Tickets ---
     if (question.includes("fare") || question.includes("price") || question.includes("ticket")) {
       const fareURL = `https://transportapi.com/v3/uk/public/fares/from/plymouth/to/exeter.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
       const response = await fetch(fareURL);
@@ -118,9 +121,19 @@ app.get("/ask", async (req, res) => {
         const cheapest = data.fares[0];
         return res.json({
           question,
-          answer: `The lowest fare from Plymouth to Exeter I found is about £${cheapest.price} (${cheapest.ticket_type}).`,
+          answer: `The lowest fare from Plymouth to Exeter is about £${cheapest.price} (${cheapest.ticket_type}).`,
         });
       }
+      return await handleWebSearch(question, res);
+    }
+
+    // --- Route or Journey planning ---
+    if (
+      question.includes("go to") ||
+      question.includes("get to") ||
+      question.includes("travel to") ||
+      question.includes("how do i")
+    ) {
       return await handleWebSearch(question, res);
     }
 
@@ -134,7 +147,7 @@ app.get("/ask", async (req, res) => {
   }
 });
 
-// --- OpenAI Fallback ---
+// --- OpenAI fallback ---
 async function handleAIResponse(question, res) {
   if (!OPENAI_API_KEY)
     return res.json({ answer: "AI access not configured yet." });
@@ -142,8 +155,8 @@ async function handleAIResponse(question, res) {
   try {
     const aiPrompt = `
 You are Transi Autopilot — a calm, polite British travel assistant for buses and transport in the South West.
-Answer conversationally, like a helpful human. If data isn’t available, offer guidance or suggest checking the operator’s site.
-Keep replies short and natural.
+Speak naturally, like a real person helping passengers.
+If no data is found, guide the user on what to try next.
 `;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -174,12 +187,11 @@ Keep replies short and natural.
   }
 }
 
-// --- Google Web Search Fallback ---
+// --- Google Custom Search fallback ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
     return res.json({
-      answer:
-        "I tried searching the web, but Google access isn’t configured yet.",
+      answer: "I tried searching the web, but Google access isn’t configured yet.",
     });
   }
 
@@ -199,7 +211,6 @@ async function handleWebSearch(query, res) {
       });
     }
 
-    // Fetch HTML of top result and summarise
     const html = await fetch(top.link).then((r) => r.text());
     const $ = cheerio.load(html);
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
@@ -215,8 +226,7 @@ async function handleWebSearch(query, res) {
         messages: [
           {
             role: "system",
-            content:
-              "Summarise this travel information in 2–3 clear, friendly sentences suitable for a bus passenger:",
+            content: "Summarise this information in 2–3 friendly sentences suitable for a bus passenger:",
           },
           { role: "user", content: text },
         ],
@@ -231,13 +241,12 @@ async function handleWebSearch(query, res) {
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
     return res.json({
-      answer:
-        "I tried searching online but couldn’t retrieve a clear answer right now.",
+      answer: "I tried searching online but couldn’t retrieve a clear answer right now.",
     });
   }
 }
 
 // --- Start Server ---
-app.listen(PORT, () =>
-  console.log(`✅ Transi Autopilot live and listening on port ${PORT}`)
-);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Transi Autopilot live and listening on port ${PORT}`);
+});
