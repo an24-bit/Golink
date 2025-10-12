@@ -1,37 +1,15 @@
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
-
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Serve static frontend
-app.use(express.static(path.join(__dirname, "public")));
-
-const APP_ID = process.env.TRANSPORT_API_ID;
-const APP_KEY = process.env.TRANSPORT_API_KEY;
-
-// Base route
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// Unified question handler
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
 
   try {
-    // --- Handle “next bus” or “live times” ---
-    if (question.includes("bus") || question.includes("next")) {
+    // --- Handle “live buses” ---
+    if (
+      question.includes("bus") ||
+      question.includes("depart") ||
+      question.includes("leaves") ||
+      question.includes("next") ||
+      question.match(/\b\d{1,3}\b/)
+    ) {
       const match = question.match(/\b([A-D]\d{1,2})\b/i);
       let stopCode = "plymouth-royal-parade";
       let stopName = "Royal Parade";
@@ -56,27 +34,31 @@ app.get("/ask", async (req, res) => {
         return res.json({ answer: `No live departures available right now for ${stopName}.` });
       }
 
-      const firstRoute = Object.keys(data.departures)[0];
-      const firstBus = data.departures[firstRoute][0];
-      const answer = `The next ${firstBus.line} to ${firstBus.direction} leaves ${stopName} at ${firstBus.expected_departure_time}.`;
+      const routeKeys = Object.keys(data.departures);
+      let allRoutes = [];
+      for (const route of routeKeys) {
+        const departures = data.departures[route].slice(0, 3);
+        departures.forEach((bus) =>
+          allRoutes.push(`${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`)
+        );
+      }
+
+      const answer = `Upcoming buses from ${stopName}: ${allRoutes.join(", ")}.`;
       return res.json({ question, answer });
     }
 
-    // --- Handle “timetable” ---
-    if (question.includes("timetable") || question.includes("schedule")) {
-      const timetableURL = `https://transportapi.com/v3/uk/bus/service/bus-1-royal-parade.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
-      const response = await fetch(timetableURL);
-      const data = await response.json();
-
-      if (data && data.service) {
-        const answer = `The ${data.service.name} service runs on ${data.service.operating_days.join(", ")} with first bus at ${data.service.first_bus_time} and last at ${data.service.last_bus_time}.`;
-        return res.json({ question, answer });
-      } else {
-        return res.json({ answer: "No timetable data found for that service." });
-      }
+    // --- Handle “journey planning” ---
+    if (
+      question.includes("go to") ||
+      question.includes("get to") ||
+      question.includes("travel to") ||
+      question.includes("how do i")
+    ) {
+      const answer = `For journeys like "${question}", please check the TransportAPI route planner or Traveline South West — the system will soon include full journey planning.`;
+      return res.json({ question, answer });
     }
 
-    // --- Handle “fare” ---
+    // --- Handle “fare” or “price” ---
     if (question.includes("fare") || question.includes("price") || question.includes("ticket")) {
       const fareURL = `https://transportapi.com/v3/uk/public/fares/from/plymouth/to/exeter.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
       const response = await fetch(fareURL);
@@ -91,6 +73,33 @@ app.get("/ask", async (req, res) => {
       }
     }
 
+    // --- AI fallback (OpenAI for general questions) ---
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    if (OPENAI_API_KEY) {
+      const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are Transi AI, a helpful UK public transport assistant. Provide clear answers about buses, travel, and lost property in the Plymouth and South West area.",
+            },
+            { role: "user", content: question },
+          ],
+        }),
+      });
+
+      const aiData = await aiRes.json();
+      const aiAnswer = aiData.choices?.[0]?.message?.content || "Sorry, I’m not sure about that.";
+      return res.json({ question, answer: aiAnswer });
+    }
+
     // --- Default fallback ---
     res.json({
       answer:
@@ -101,6 +110,3 @@ app.get("/ask", async (req, res) => {
     res.status(500).json({ error: "Something went wrong while fetching transport data." });
   }
 });
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`✅ Transi AI running on port ${PORT}`));
