@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
-import cheerio from "cheerio";
+import * as cheerio from "cheerio";
 
 dotenv.config();
 
