@@ -22,8 +22,8 @@ app.use(express.json());
 const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;  // <-- Make sure it's GOOGLE_API_KEY
+const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;      // <-- Make sure it's GOOGLE_CX_ID
 
 // --- Homepage ---
 app.get("/", (req, res) => {
@@ -31,15 +31,20 @@ app.get("/", (req, res) => {
   console.log("🟢 Visitor opened Transi Autopilot");
 });
 
-// --- Health / Debug Route ---
+// --- Debug Route ---
 app.get("/debug", (req, res) => {
+  const check = {
+    OPENAI_API_KEY: !!OPENAI_API_KEY,
+    TRANSPORT_API_ID: !!APP_ID,
+    TRANSPORT_API_KEY: !!APP_KEY,
+    GOOGLE_API_KEY: !!GOOGLE_API_KEY,
+    GOOGLE_CX_ID: !!GOOGLE_CX_ID,
+  };
   res.json({
-    status: "✅ Transi Autopilot is running",
+    status: "✅ Transi Autopilot Diagnostic",
     environment: process.env.NODE_ENV || "production",
-    transportAPI: !!APP_KEY,
-    openAI: !!OPENAI_API_KEY,
-    googleSearch: !!GOOGLE_API_KEY && !!GOOGLE_CX_ID,
-    port: PORT
+    connected: check,
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -56,7 +61,7 @@ app.get("/ask", async (req, res) => {
   }
 
   try {
-    // Lost property or contact queries
+    // Lost property or contact
     if (
       question.includes("lost") ||
       question.includes("found") ||
@@ -75,7 +80,6 @@ app.get("/ask", async (req, res) => {
       question.includes("next") ||
       question.match(/\b\d{1,3}\b/)
     ) {
-      const match = question.match(/\b([A-D]\d{1,2})\b/i);
       let stopCode = "plymouth-royal-parade";
       let stopName = "Royal Parade";
 
@@ -86,6 +90,7 @@ app.get("/ask", async (req, res) => {
         B3: "1100PZ01915",
       };
 
+      const match = question.match(/\b([A-D]\d{1,2})\b/i);
       if (match && stops[match[1].toUpperCase()]) {
         stopCode = stops[match[1].toUpperCase()];
         stopName = `Royal Parade Stop ${match[1].toUpperCase()}`;
@@ -103,7 +108,8 @@ app.get("/ask", async (req, res) => {
       const routes = Object.keys(data.departures);
       const allBuses = routes.flatMap((r) =>
         data.departures[r].slice(0, 3).map(
-          (bus) => `${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`
+          (bus) =>
+            `${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`
         )
       );
 
@@ -112,7 +118,11 @@ app.get("/ask", async (req, res) => {
     }
 
     // --- Fares / Tickets ---
-    if (question.includes("fare") || question.includes("price") || question.includes("ticket")) {
+    if (
+      question.includes("fare") ||
+      question.includes("price") ||
+      question.includes("ticket")
+    ) {
       const fareURL = `https://transportapi.com/v3/uk/public/fares/from/plymouth/to/exeter.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
       const response = await fetch(fareURL);
       const data = await response.json();
@@ -121,7 +131,7 @@ app.get("/ask", async (req, res) => {
         const cheapest = data.fares[0];
         return res.json({
           question,
-          answer: `The lowest fare from Plymouth to Exeter is about £${cheapest.price} (${cheapest.ticket_type}).`,
+          answer: `The lowest fare from Plymouth to Exeter is around £${cheapest.price} (${cheapest.ticket_type}).`,
         });
       }
       return await handleWebSearch(question, res);
@@ -155,8 +165,8 @@ async function handleAIResponse(question, res) {
   try {
     const aiPrompt = `
 You are Transi Autopilot — a calm, polite British travel assistant for buses and transport in the South West.
-Speak naturally, like a real person helping passengers.
-If no data is found, guide the user on what to try next.
+Answer naturally, like a real person helping passengers.
+If no data is available, guide the user on where to find information instead.
 `;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -226,7 +236,8 @@ async function handleWebSearch(query, res) {
         messages: [
           {
             role: "system",
-            content: "Summarise this information in 2–3 friendly sentences suitable for a bus passenger:",
+            content:
+              "Summarise this travel information in 2–3 clear, friendly sentences for a passenger:",
           },
           { role: "user", content: text },
         ],
@@ -241,7 +252,8 @@ async function handleWebSearch(query, res) {
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
     return res.json({
-      answer: "I tried searching online but couldn’t retrieve a clear answer right now.",
+      answer:
+        "I tried searching online but couldn’t retrieve a clear answer right now.",
     });
   }
 }
