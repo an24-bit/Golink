@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Root route
-app.get("/", (_, res) => res.send("🚍 Transi AI Assistant is running smoothly!"));
+app.use(express.static("public"));
 
 // 🔊 Test route — check if Google TTS is working
 app.get("/test-tts", async (_, res) => {
