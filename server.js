@@ -22,25 +22,24 @@ const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// --- Root route ---
+// --- Root route (serve the frontend page) ---
 app.get("/", (req, res) => {
-  res.send("🚍 Transi AI Assistant is online with TransportAPI + OpenAI integration.");
+  res.sendFile(path.join(__dirname, "public/index.html"));
+  console.log("🟢 User opened Transi Autopilot Assistant");
 });
 
 // --- Unified intelligent route ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
 
-  // Human-like intro if no question given
   if (!question || question.trim() === "") {
     return res.json({
       answer:
-        "Hello there! I’m Transi AI — your 24/7 public transport assistant. You can ask me things like ‘Next 43 from Royal Parade A4’, ‘How much is a single to Devonport’, or ‘Where can I get the 28 from?’.",
+        "Hello there! I’m Transi Autopilot — your 24/7 public transport assistant. You can ask me things like ‘Next 43 from Royal Parade A4’, ‘How much is a single to Devonport’, or ‘Where can I get the 28 from?’.",
     });
   }
 
-  // Friendly “thinking” simulation (frontend handles this too)
-  console.log(`🧠 Received: ${question}`);
+  console.log(`🧠 Received question: ${question}`);
 
   try {
     // --- Handle “live buses” ---
@@ -97,7 +96,7 @@ app.get("/ask", async (req, res) => {
       question.includes("travel to") ||
       question.includes("how do i")
     ) {
-      const answer = `Give me a moment... Normally, I’d use journey planning tools like Traveline South West. For now, the best route for "${question}" should be available soon in this assistant update.`;
+      const answer = `Let me check... Normally, I’d use journey planners like Traveline South West. For now, this feature is being upgraded — but I’ll soon guide you with full routes from stop to stop.`;
       return res.json({ question, answer });
     }
 
@@ -109,11 +108,11 @@ app.get("/ask", async (req, res) => {
 
       if (data && data.fares && data.fares.length > 0) {
         const cheapest = data.fares[0];
-        const answer = `Okay — the cheapest fare I found from Plymouth to Exeter is about £${cheapest.price} (${cheapest.ticket_type}).`;
+        const answer = `Okay — the cheapest fare from Plymouth to Exeter is around £${cheapest.price} (${cheapest.ticket_type}).`;
         return res.json({ question, answer });
       } else {
         return res.json({
-          answer: "I checked but couldn’t find any fare info right now. Try again in a bit.",
+          answer: "I checked but couldn’t find any fare info right now. Try again shortly.",
         });
       }
     }
@@ -121,10 +120,9 @@ app.get("/ask", async (req, res) => {
     // --- OpenAI fallback for all other transport-related questions ---
     if (OPENAI_API_KEY) {
       const aiPrompt = `
-You are Transi AI, a friendly British public transport assistant based in Plymouth. 
-Answer questions naturally, like a human helper. 
-If users ask something outside bus data (e.g., lost phone, ticket office, park & ride, route details),
-answer helpfully and concisely. Be polite, clear, and realistic.
+You are Transi Autopilot, a friendly UK transport assistant based in Plymouth.
+Answer like a helpful human customer-service agent: natural tone, polite, realistic, short answers.
+If question is outside bus data (like lost items or ticket offices), guide clearly and kindly.
 `;
 
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -150,10 +148,10 @@ answer helpfully and concisely. Be polite, clear, and realistic.
     // --- Default fallback ---
     res.json({
       answer:
-        "I’m here to help with live buses, fares, routes, and stops. Try asking me something like ‘When’s the next 43 from Royal Parade A4?’",
+        "I’m here to help with buses, fares, routes, and stops. Try asking me something like ‘When’s the next 43 from Royal Parade A4?’",
     });
   } catch (error) {
-    console.error("Error:", error);
+    console.error("❌ Error:", error);
     res.status(500).json({
       error: "Something went wrong while fetching transport data.",
     });
@@ -161,4 +159,4 @@ answer helpfully and concisely. Be polite, clear, and realistic.
 });
 
 // --- Start server ---
-app.listen(PORT, () => console.log(`✅ Transi AI running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Transi Autopilot running on port ${PORT}`));
