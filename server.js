@@ -198,7 +198,7 @@ If no data is available, guide the user on where to find information instead.
   }
 }
 
-// --- Google Custom Search fallback (✅ Latest Working Version) ---
+// --- Google Custom Search with Smart Fallback ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
     console.log("❌ Missing Google API credentials.");
@@ -212,7 +212,7 @@ async function handleWebSearch(query, res) {
 
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
       query
-    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=2`;
+    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=3`;
 
     const searchRes = await fetch(googleUrl);
     const data = await searchRes.json();
@@ -220,18 +220,44 @@ async function handleWebSearch(query, res) {
     if (!data.items || data.items.length === 0) {
       console.log("⚠️ No Google results found.");
       return res.json({
-        answer: "I searched online but couldn’t find a reliable answer just now.",
+        answer: "I searched online but couldn’t find a reliable answer right now.",
       });
     }
 
-    const top = data.items[0];
-    console.log("✅ Found Google result:", top.link);
+    // Try to find an accessible result
+    let validPage = null;
+    for (const item of data.items) {
+      const url = item.link;
+      console.log(`🔎 Checking ${url}`);
+      try {
+        const html = await fetch(url).then((r) => r.text());
+        if (
+          html &&
+          html.length > 500 &&
+          !html.includes("enable JavaScript") &&
+          !html.includes("Cloudflare")
+        ) {
+          validPage = { url, html };
+          break;
+        }
+      } catch (e) {
+        console.log(`⚠️ Skipping blocked or invalid URL: ${url}`);
+      }
+    }
 
-    // Fetch page text and summarise
-    const html = await fetch(top.link).then((r) => r.text());
-    const $ = cheerio.load(html);
+    if (!validPage) {
+      return res.json({
+        question: query,
+        answer:
+          "I tried checking official sources, but some websites block automated access. You can visit www.plymouthbus.co.uk directly for live timetables.",
+      });
+    }
+
+    // Extract clean readable text
+    const $ = cheerio.load(validPage.html);
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
 
+    // Summarise with OpenAI
     const aiSummaryRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -244,7 +270,7 @@ async function handleWebSearch(query, res) {
           {
             role: "system",
             content:
-              "Summarise this travel information in 2–3 clear, friendly sentences for a passenger:",
+              "Summarise this travel or transport information in 2–3 clear, friendly sentences for a passenger.",
           },
           { role: "user", content: text },
         ],
@@ -257,7 +283,10 @@ async function handleWebSearch(query, res) {
       "I found something online, but couldn’t summarise it clearly.";
 
     console.log("🧠 AI summary generated successfully.");
-    return res.json({ question: query, answer: summary });
+    return res.json({
+      question: query,
+      answer: `${summary}\n\n(Source: ${validPage.url})`,
+    });
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
     return res.json({
