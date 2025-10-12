@@ -37,7 +37,7 @@ function speakText(text) {
   const synth = window.speechSynthesis;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "en-GB";
-  utterance.rate = 1;
+  utterance.rate = 0.85;
   utterance.pitch = 1;
   synth.speak(utterance);
 }
