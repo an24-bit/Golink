@@ -4,98 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Transi AI Assistant</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #111;
-      color: #f2f2f2;
-      text-align: center;
-      padding: 40px;
-    }
-    h1 {
-      color: #76e;
-    }
-    input {
-      width: 80%;
-      padding: 10px;
-      font-size: 1rem;
-      border-radius: 5px;
-      border: none;
-      margin-top: 20px;
-    }
-    button {
-      background: #4e89ff;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 5px;
-      margin-left: 10px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #3c6fe0;
-    }
-    #response {
-      margin-top: 30px;
-      white-space: pre-wrap;
-      text-align: left;
-      width: 80%;
-      margin-left: auto;
-      margin-right: auto;
-      background: #222;
-      padding: 20px;
-      border-radius: 8px;
-    }
-    audio {
-      margin-top: 20px;
-      width: 80%;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>🚍 Transi AI Assistant</h1>
-  <p>Ask me anything about transport, routes, or travel.</p>
+  <div class="container">
+    <h1>🚌 <span>Transi AI Assistant</span></h1>
+    <p class="subtitle">Ask me anything about transport, routes, or travel.</p>
 
-  <div>
-    <input id="question" type="text" placeholder="Type your question..." />
-    <button id="askBtn">Ask</button>
+    <div class="input-box">
+      <input type="text" id="question" placeholder="Type your question..." />
+      <button id="askBtn">Ask</button>
+    </div>
+
+    <div id="responseBox" class="response-box">Waiting for your question...</div>
+    <div id="audioBox" class="audio-box" style="display:none;">
+      <button id="speakBtn">🔊 Read Aloud</button>
+    </div>
   </div>
 
-  <div id="response"></div>
-  <audio id="audio" controls hidden></audio>
-
-  <script>
-    const input = document.getElementById("question");
-    const button = document.getElementById("askBtn");
-    const responseBox = document.getElementById("response");
-    const audio = document.getElementById("audio");
-
-    async function askQuestion() {
-      const q = input.value.trim();
-      if (!q) return;
-      responseBox.textContent = "Thinking...";
-      try {
-        const res = await fetch(`/ask?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        if (data.answer) {
-          responseBox.textContent = data.answer;
-          if (data.audio) {
-            audio.src = data.audio;
-            audio.hidden = false;
-            audio.play();
-          }
-        } else {
-          responseBox.textContent = "Sorry, I couldn't find an answer.";
-        }
-      } catch (err) {
-        responseBox.textContent = "Error: " + err.message;
-      }
-    }
-
-    button.addEventListener("click", askQuestion);
-    input.addEventListener("keypress", e => {
-      if (e.key === "Enter") askQuestion();
-    });
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>
