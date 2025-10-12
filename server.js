@@ -22,14 +22,25 @@ const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// --- Main Route for Checking Deployment ---
+// --- Root route ---
 app.get("/", (req, res) => {
-  res.send("🚍 Transi AI Assistant is running with TransportAPI + OpenAI integration!");
+  res.send("🚍 Transi AI Assistant is online with TransportAPI + OpenAI integration.");
 });
 
-// --- Unified AI / Transport Question Handler ---
+// --- Unified intelligent route ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
+
+  // Human-like intro if no question given
+  if (!question || question.trim() === "") {
+    return res.json({
+      answer:
+        "Hello there! I’m Transi AI — your 24/7 public transport assistant. You can ask me things like ‘Next 43 from Royal Parade A4’, ‘How much is a single to Devonport’, or ‘Where can I get the 28 from?’.",
+    });
+  }
+
+  // Friendly “thinking” simulation (frontend handles this too)
+  console.log(`🧠 Received: ${question}`);
 
   try {
     // --- Handle “live buses” ---
@@ -61,7 +72,9 @@ app.get("/ask", async (req, res) => {
       const data = await response.json();
 
       if (!data.departures) {
-        return res.json({ answer: `No live departures available right now for ${stopName}.` });
+        return res.json({
+          answer: `Hmm... I couldn’t see any live departures for ${stopName} right now. Maybe no buses are due this minute.`,
+        });
       }
 
       const routeKeys = Object.keys(data.departures);
@@ -73,7 +86,7 @@ app.get("/ask", async (req, res) => {
         );
       }
 
-      const answer = `Upcoming buses from ${stopName}: ${allRoutes.join(", ")}.`;
+      const answer = `Here’s what I found: upcoming buses from ${stopName} — ${allRoutes.join(", ")}.`;
       return res.json({ question, answer });
     }
 
@@ -84,7 +97,7 @@ app.get("/ask", async (req, res) => {
       question.includes("travel to") ||
       question.includes("how do i")
     ) {
-      const answer = `For journeys like "${question}", please check the TransportAPI route planner or Traveline South West — the system will soon include full journey planning.`;
+      const answer = `Give me a moment... Normally, I’d use journey planning tools like Traveline South West. For now, the best route for "${question}" should be available soon in this assistant update.`;
       return res.json({ question, answer });
     }
 
@@ -96,15 +109,24 @@ app.get("/ask", async (req, res) => {
 
       if (data && data.fares && data.fares.length > 0) {
         const cheapest = data.fares[0];
-        const answer = `The cheapest fare from Plymouth to Exeter is about £${cheapest.price} (${cheapest.ticket_type}).`;
+        const answer = `Okay — the cheapest fare I found from Plymouth to Exeter is about £${cheapest.price} (${cheapest.ticket_type}).`;
         return res.json({ question, answer });
       } else {
-        return res.json({ answer: "Fare data not available for that route." });
+        return res.json({
+          answer: "I checked but couldn’t find any fare info right now. Try again in a bit.",
+        });
       }
     }
 
-    // --- AI fallback (OpenAI for general questions) ---
+    // --- OpenAI fallback for all other transport-related questions ---
     if (OPENAI_API_KEY) {
+      const aiPrompt = `
+You are Transi AI, a friendly British public transport assistant based in Plymouth. 
+Answer questions naturally, like a human helper. 
+If users ask something outside bus data (e.g., lost phone, ticket office, park & ride, route details),
+answer helpfully and concisely. Be polite, clear, and realistic.
+`;
+
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -114,29 +136,27 @@ app.get("/ask", async (req, res) => {
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [
-            {
-              role: "system",
-              content:
-                "You are Transi AI, a helpful UK public transport assistant. Provide clear, friendly answers about buses, travel, and lost property in Plymouth and the South West.",
-            },
+            { role: "system", content: aiPrompt },
             { role: "user", content: question },
           ],
         }),
       });
 
       const aiData = await aiRes.json();
-      const aiAnswer = aiData.choices?.[0]?.message?.content || "Sorry, I’m not sure about that.";
+      const aiAnswer = aiData.choices?.[0]?.message?.content || "Sorry, I didn’t catch that.";
       return res.json({ question, answer: aiAnswer });
     }
 
     // --- Default fallback ---
     res.json({
       answer:
-        "I can help with live buses, timetables, fares, or nearby stops. Try asking something like 'When’s the next 43 from Royal Parade A4?'",
+        "I’m here to help with live buses, fares, routes, and stops. Try asking me something like ‘When’s the next 43 from Royal Parade A4?’",
     });
   } catch (error) {
     console.error("Error:", error);
-    res.status(500).json({ error: "Something went wrong while fetching transport data." });
+    res.status(500).json({
+      error: "Something went wrong while fetching transport data.",
+    });
   }
 });
 
