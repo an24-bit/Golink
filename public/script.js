@@ -1,83 +1,103 @@
-const input = document.getElementById("question");
+// --- Transi Autopilot Frontend Script ---
+// Handles input, voice, GPS, fetch requests, and speech output
+
 const askBtn = document.getElementById("askBtn");
 const voiceBtn = document.getElementById("voiceBtn");
-const responseBox = document.getElementById("responseBox");
 const speakBtn = document.getElementById("speakBtn");
+const questionBox = document.getElementById("question");
+const responseBox = document.getElementById("responseBox");
+const audioBox = document.getElementById("audioBox");
 
-// --- Speak function (slow, natural UK English) ---
-function speakText(text, rate = 0.9) {
-  const synth = window.speechSynthesis;
-  synth.cancel(); // stop any previous speech
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-GB";
-  utterance.rate = rate;
-  utterance.pitch = 1;
-  synth.speak(utterance);
-}
+let userLocation = { lat: null, lon: null };
 
-// --- Ask question ---
-async function askQuestion() {
-  const question = input.value.trim();
-  if (!question) {
-    responseBox.textContent = "Please type or say a question first 🙂";
-    speakText("Please type or say a question first.");
-    return;
-  }
-
-  responseBox.textContent = "Alright, give me a moment while I check that for you...";
-  speakText("Alright, give me a moment while I check that for you...", 0.92);
-
-  try {
-    const res = await fetch(`/ask?q=${encodeURIComponent(question)}`);
-    const data = await res.json();
-
-    if (data.answer) {
-      responseBox.textContent = data.answer;
-      speakText(data.answer, 0.88);
-    } else {
-      responseBox.textContent = "Sorry, I couldn’t find an answer right now.";
-      speakText("Sorry, I couldn’t find an answer right now.", 0.88);
+// --- Get location automatically ---
+if ("geolocation" in navigator) {
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      userLocation.lat = pos.coords.latitude.toFixed(6);
+      userLocation.lon = pos.coords.longitude.toFixed(6);
+      console.log("📍 Location detected:", userLocation);
+    },
+    (err) => {
+      console.warn("⚠️ Location access denied:", err.message);
     }
-  } catch (err) {
-    console.error(err);
-    responseBox.textContent = "Error: couldn't connect to Transi Autopilot.";
-    speakText("Sorry, there was a connection problem with Transi Autopilot.", 0.9);
-  }
+  );
+} else {
+  console.warn("❌ Geolocation not supported on this device.");
 }
 
-// --- Voice input via microphone ---
+// --- Ask button ---
+askBtn.addEventListener("click", () => {
+  const question = questionBox.value.trim();
+  if (!question) return;
+  getAnswer(question);
+});
+
+// --- Enter key support ---
+questionBox.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") getAnswer(questionBox.value.trim());
+});
+
+// --- Speech input (Voice Recognition) ---
 voiceBtn.addEventListener("click", () => {
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    responseBox.textContent = "Speech recognition isn’t supported on this browser.";
-    speakText("Sorry, speech recognition isn’t supported on this browser.", 0.9);
+  if (!("webkitSpeechRecognition" in window)) {
+    alert("Speech recognition not supported on this browser.");
     return;
   }
-
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  const recognition = new webkitSpeechRecognition();
   recognition.lang = "en-GB";
   recognition.start();
 
   recognition.onresult = (event) => {
     const transcript = event.results[0][0].transcript;
-    input.value = transcript;
-    responseBox.textContent = `You said: "${transcript}"`;
-    speakText("Got it. Let me check that for you...", 0.9);
-    askQuestion();
-  };
-
-  recognition.onerror = (event) => {
-    responseBox.textContent = "Sorry, I couldn’t hear you clearly. Please try again.";
-    speakText("Sorry, I couldn’t hear you clearly. Please try again.", 0.9);
+    questionBox.value = transcript;
+    getAnswer(transcript);
   };
 });
 
-// --- Buttons & key events ---
-askBtn.addEventListener("click", askQuestion);
-input.addEventListener("keypress", (e) => {
-  if (e.key === "Enter") askQuestion();
-});
+// --- Fetch answer from backend ---
+async function getAnswer(question) {
+  responseBox.textContent = "⏳ Thinking...";
 
+  try {
+    const params = new URLSearchParams({
+      q: question,
+      lat: userLocation.lat || "",
+      lon: userLocation.lon || "",
+    });
+
+    const res = await fetch(`/ask?${params}`);
+    const data = await res.json();
+    responseBox.textContent = data.answer || "Sorry, no reply received.";
+
+    // Auto speak the result
+    speakText(data.answer);
+  } catch (err) {
+    console.error("❌ Fetch Error:", err);
+    responseBox.textContent =
+      "Something went wrong — please try again in a moment.";
+  }
+}
+
+// --- Text-to-Speech (Browser-based) ---
+function speakText(text) {
+  if (!text) return;
+  const speech = new SpeechSynthesisUtterance(text);
+  speech.lang = "en-GB";
+  speech.pitch = 1;
+  speech.rate = 1;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(speech);
+}
+
+// --- Manual Read Aloud button ---
 speakBtn.addEventListener("click", () => {
-  const text = responseBox.textContent.trim();
-  if (text) speakText(text, 0.9);
+  speakText(responseBox.textContent);
+});
+
+// --- Auto greeting ---
+window.addEventListener("load", () => {
+  const greeting =
+    "Welcome to Transi Autopilot Assistant. How can I help you today?";
+  speakText(greeting);
 });
