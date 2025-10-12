@@ -3,7 +3,6 @@ import fetch from "node-fetch";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import { google } from "googleapis";
 import * as cheerio from "cheerio";
 
 dotenv.config();
@@ -22,8 +21,8 @@ app.use(express.json());
 const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;  // <-- Make sure it's GOOGLE_API_KEY
-const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;      // <-- Make sure it's GOOGLE_CX_ID
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;
 
 // --- Homepage ---
 app.get("/", (req, res) => {
@@ -97,11 +96,13 @@ app.get("/ask", async (req, res) => {
       }
 
       const liveURL = `https://transportapi.com/v3/uk/bus/stop/${stopCode}/live.json?app_id=${APP_ID}&app_key=${APP_KEY}&group=route&nextbuses=yes`;
+      console.log("🔗 Fetching live data:", liveURL);
+
       const response = await fetch(liveURL);
       const data = await response.json();
 
       if (!data?.departures) {
-        console.log("⚠️ No live bus data, switching to web search...");
+        console.log("⚠️ No live bus data found — switching to Google search...");
         return await handleWebSearch(question, res);
       }
 
@@ -197,30 +198,36 @@ If no data is available, guide the user on where to find information instead.
   }
 }
 
-// --- Google Custom Search fallback ---
+// --- Google Custom Search fallback (Fixed Version) ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
+    console.log("❌ Missing Google API credentials.");
     return res.json({
       answer: "I tried searching the web, but Google access isn’t configured yet.",
     });
   }
 
   try {
-    const customsearch = google.customsearch("v1");
-    const result = await customsearch.cse.list({
-      cx: GOOGLE_CX_ID,
-      q: `site:traveline.info OR site:plymouthbus.co.uk ${query}`,
-      auth: GOOGLE_API_KEY,
-      num: 2,
-    });
+    console.log("🌐 Starting Google Custom Search for:", query);
 
-    const top = result.data.items?.[0];
-    if (!top) {
+    const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
+      `site:traveline.info OR site:plymouthbus.co.uk ${query}`
+    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=2`;
+
+    const searchRes = await fetch(googleUrl);
+    const data = await searchRes.json();
+
+    if (!data.items || data.items.length === 0) {
+      console.log("⚠️ No Google results found.");
       return res.json({
         answer: "I searched online but couldn’t find a reliable answer just now.",
       });
     }
 
+    const top = data.items[0];
+    console.log("✅ Found Google result:", top.link);
+
+    // Fetch page text and summarise
     const html = await fetch(top.link).then((r) => r.text());
     const $ = cheerio.load(html);
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
@@ -248,6 +255,8 @@ async function handleWebSearch(query, res) {
     const summary =
       aiSummaryData.choices?.[0]?.message?.content ||
       "I found something online, but couldn’t summarise it clearly.";
+
+    console.log("🧠 AI summary generated successfully.");
     return res.json({ question: query, answer: summary });
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
