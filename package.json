@@ -1,6 +1,6 @@
 {
   "name": "transi-ai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Transi AI – South West UK transport assistant with text and voice support",
   "main": "server.js",
   "type": "module",
@@ -31,5 +31,8 @@
     "assistant"
   ],
   "author": "Ali",
-  "license": "MIT"
+  "license": "MIT",
+  "render": {
+    "startCommand": "node server.js"
+  }
 }
