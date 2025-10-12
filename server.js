@@ -2,40 +2,45 @@ import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Load TransportAPI credentials
+// Serve frontend (index.html + assets)
+app.use(express.static(path.join(__dirname, "public")));
+
 const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 
-// --- Base route ---
+// ---------- Base route ----------
 app.get("/", (req, res) => {
-  res.send("🚌 Transi AI Assistant is running with full TransportAPI integration!");
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// --- Unified question handler ---
+// ---------- Unified question handler ----------
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
 
   try {
     // --- Handle “next bus” or “live times” ---
     if (question.includes("bus") || question.includes("next")) {
-      // detect stop code like A4, D1, etc.
       const match = question.match(/\b([A-D]\d{1,2})\b/i);
-      let stopCode = "plymouth-royal-parade"; // default
+      let stopCode = "plymouth-royal-parade";
       let stopName = "Royal Parade";
 
-      // map of known stop codes to ATCO IDs
       const stops = {
-        A4: "1100PZ01901", // Royal Parade A4
-        D1: "1100PZ01926", // Royal Parade D1
-        C2: "1100PZ01920", // Royal Parade C2
-        B3: "1100PZ01915"  // Royal Parade B3
+        A4: "1100PZ01901",
+        D1: "1100PZ01926",
+        C2: "1100PZ01920",
+        B3: "1100PZ01915",
       };
 
       if (match && stops[match[1].toUpperCase()]) {
@@ -119,7 +124,8 @@ app.get("/ask", async (req, res) => {
 
     // --- Default fallback ---
     res.json({
-      answer: "I can help with live buses (e.g. 'next bus from D1'), timetables, fares, routes, or nearby stops. Try asking something like 'When’s the next 43 from Royal Parade A4?'"
+      answer:
+        "I can help with live buses (e.g. 'next bus from D1'), timetables, fares, routes, or nearby stops. Try asking something like 'When’s the next 43 from Royal Parade A4?'",
     });
   } catch (error) {
     console.error("Error:", error);
@@ -127,6 +133,6 @@ app.get("/ask", async (req, res) => {
   }
 });
 
-// --- Start server ---
-const PORT = process.env.PORT || 3000;
+// ---------- Start server ----------
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ Transi AI running on port ${PORT}`));
