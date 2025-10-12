@@ -9,13 +9,45 @@ const PORT = process.env.PORT || 3000;
 // Root route
 app.get("/", (_, res) => res.send("🚍 Transi AI Assistant is running smoothly!"));
 
+// 🔊 Test route — check if Google TTS is working
+app.get("/test-tts", async (_, res) => {
+  try {
+    const GOOGLE_TTS_KEY = process.env.GOOGLE_TTS_KEY;
+    if (!GOOGLE_TTS_KEY)
+      return res.status(400).send("❌ GOOGLE_TTS_KEY missing in environment.");
+
+    const response = await fetch(
+      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: { text: "Hello! Your Transi AI voice system is working fine." },
+          voice: { languageCode: "en-GB", name: "en-GB-Neural2-A" },
+          audioConfig: { audioEncoding: "MP3" },
+        }),
+      }
+    );
+
+    const data = await response.json();
+    if (data.audioContent) {
+      res.send("✅ Google Text-to-Speech is working fine!");
+    } else {
+      res.status(400).json(data);
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("❌ Error testing TTS: " + err.message);
+  }
+});
+
 // Main route
 app.get("/ask", async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: "missing ?q=question" });
 
   try {
-    // 🔎 Google Custom Search API (replace later with your own engine)
+    // 🔎 Google Custom Search API
     const GOOGLE_SEARCH_KEY = process.env.GOOGLE_SEARCH_KEY;
     const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
     const searchUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
@@ -33,7 +65,7 @@ app.get("/ask", async (req, res) => {
     // 💬 Generate text summary using OpenAI
     const summary = await summarise(q, snippets);
 
-    // 🔊 Convert to voice (Google TTS)
+    // 🔊 Convert summary to speech (Google TTS)
     const GOOGLE_TTS_KEY = process.env.GOOGLE_TTS_KEY;
     const voiceUrl =
       "https://texttospeech.googleapis.com/v1/text:synthesize?key=" +
@@ -50,6 +82,13 @@ app.get("/ask", async (req, res) => {
     });
 
     const ttsData = await ttsResponse.json();
+
+    if (!ttsData.audioContent)
+      return res.status(400).json({
+        error: "TTS request failed",
+        details: ttsData,
+      });
+
     const audioBase64 = ttsData.audioContent;
     const filename = `tts/transi_${Date.now()}.mp3`;
 
@@ -69,4 +108,6 @@ app.get("/ask", async (req, res) => {
 
 app.use("/tts", express.static("public/tts"));
 
-app.listen(PORT, () => console.log(`✅ Transi server live on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`✅ Transi server live on port ${PORT}`)
+);
