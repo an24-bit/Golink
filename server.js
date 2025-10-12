@@ -3,6 +3,8 @@ import fetch from "node-fetch";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { google } from "googleapis";
+import cheerio from "cheerio";
 
 dotenv.config();
 
@@ -18,8 +20,10 @@ app.use(express.json());
 const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;
 
-// --- Main page ---
+// --- Serve page ---
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
   console.log("🟢 Visitor opened Transi Autopilot");
@@ -30,28 +34,26 @@ app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
   console.log(`💬 User asked: ${question}`);
 
-  // Default greeting
   if (!question.trim()) {
     return res.json({
       answer:
-        "Hello there! I’m Transi Autopilot — your friendly public transport assistant. You can ask things like ‘When’s the next 43 from Royal Parade?’, ‘How much is a ticket to Devonport?’, or ‘Where can I get the 28 from?’",
+        "Hello there! I’m Transi Autopilot — your friendly travel assistant. You can ask about buses, fares, lost property, or live routes around Plymouth.",
     });
   }
 
   try {
-    // Skip bus logic if user is talking about lost items, contact, or help
+    // Lost item → AI fallback
     if (
       question.includes("lost") ||
       question.includes("found") ||
       question.includes("wallet") ||
       question.includes("phone") ||
-      question.includes("help") ||
       question.includes("contact")
     ) {
       return await handleAIResponse(question, res);
     }
 
-    // --- Live bus data ---
+    // --- Live Buses ---
     if (
       question.includes("bus") ||
       question.includes("depart") ||
@@ -80,9 +82,8 @@ app.get("/ask", async (req, res) => {
       const data = await response.json();
 
       if (!data.departures) {
-        return res.json({
-          answer: `Hmm… I couldn’t find any live departures for ${stopName} just now. It may simply mean no buses are due this minute.`,
-        });
+        console.log("⚠️ No live bus data, moving to web search...");
+        return await handleWebSearch(question, res);
       }
 
       const routeKeys = Object.keys(data.departures);
@@ -96,18 +97,17 @@ app.get("/ask", async (req, res) => {
       return res.json({ question, answer });
     }
 
-    // --- Journey planning ---
+    // --- Journey Planning ---
     if (
       question.includes("go to") ||
       question.includes("get to") ||
       question.includes("travel to") ||
       question.includes("how do i")
     ) {
-      const answer = `Let me think... Normally I’d check live route data, but that feature is being upgraded. For now, the best way is to check Traveline South West — soon I’ll handle that directly here.`;
-      return res.json({ question, answer });
+      return await handleWebSearch(question, res);
     }
 
-    // --- Fares / ticket prices ---
+    // --- Fare Info ---
     if (question.includes("fare") || question.includes("price") || question.includes("ticket")) {
       const fareURL = `https://transportapi.com/v3/uk/public/fares/from/plymouth/to/exeter.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
       const response = await fetch(fareURL);
@@ -120,32 +120,28 @@ app.get("/ask", async (req, res) => {
           answer: `The lowest fare from Plymouth to Exeter I found is around £${cheapest.price} (${cheapest.ticket_type}).`,
         });
       }
-      return res.json({
-        question,
-        answer: "I couldn’t retrieve fare data right now — maybe try again shortly.",
-      });
+      return await handleWebSearch(question, res);
     }
 
-    // --- Anything else ---
+    // --- Otherwise, try AI or web search ---
     return await handleAIResponse(question, res);
   } catch (error) {
     console.error("❌ Error:", error);
     res.status(500).json({
-      answer: "Something went wrong while fetching live data. Please try again in a moment.",
+      answer: "Something went wrong while fetching live data.",
     });
   }
 });
 
-// --- Helper: AI fallback ---
+// --- AI Fallback ---
 async function handleAIResponse(question, res) {
-  if (!OPENAI_API_KEY)
-    return res.json({ answer: "AI service is not configured yet." });
+  if (!OPENAI_API_KEY) return res.json({ answer: "AI service not configured yet." });
 
   const aiPrompt = `
-You are Transi Autopilot — a helpful British transport assistant based in Plymouth.
-Answer naturally, in a warm conversational tone, as if chatting to a passenger.
-If asked about lost items, phone numbers, customer service, or route info, respond helpfully and realistically.
-If it’s outside transport, politely redirect to the right topic.
+You are Transi Autopilot — a British travel assistant.
+Speak conversationally, like a real person helping a passenger.
+If a direct answer isn’t available, give a helpful explanation.
+If question is about Plymouth or South West travel, use realistic context.
 `;
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -166,12 +162,69 @@ If it’s outside transport, politely redirect to the right topic.
   const aiData = await aiRes.json();
   const aiAnswer =
     aiData.choices?.[0]?.message?.content ||
-    "Sorry, I couldn’t find an answer right now.";
-
+    "Sorry, I couldn’t find an answer just now.";
   return res.json({ question, answer: aiAnswer });
 }
 
+// --- Web Search Fallback ---
+async function handleWebSearch(query, res) {
+  if (!GOOGLE_API_KEY || !GOOGLE_CX_ID)
+    return res.json({
+      answer:
+        "I tried searching the web, but my search access isn’t set up yet.",
+    });
+
+  try {
+    const customsearch = google.customsearch("v1");
+    const result = await customsearch.cse.list({
+      cx: GOOGLE_CX_ID,
+      q: `site:traveline.info OR site:plymouthbus.co.uk ${query}`,
+      auth: GOOGLE_API_KEY,
+      num: 3,
+    });
+
+    const topResult = result.data.items?.[0];
+    if (!topResult)
+      return res.json({
+        answer: "I searched the web but couldn’t find anything useful right now.",
+      });
+
+    // Fetch & summarise the top result
+    const html = await fetch(topResult.link).then((r) => r.text());
+    const $ = cheerio.load(html);
+    const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
+
+    // Summarise using OpenAI
+    const aiSummary = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Summarise this travel info in 2-3 friendly sentences suitable for a bus passenger:",
+          },
+          { role: "user", content: text },
+        ],
+      }),
+    }).then((r) => r.json());
+
+    const summary =
+      aiSummary.choices?.[0]?.message?.content ||
+      "I found something online, but couldn’t summarise it.";
+    return res.json({ question: query, answer: summary });
+  } catch (err) {
+    console.error("🌐 Web search error:", err);
+    return res.json({
+      answer: "I tried searching online but couldn’t get a clear answer just now.",
+    });
+  }
+}
+
 // --- Start ---
-app.listen(PORT, () =>
-  console.log(`✅ Transi Autopilot running on port ${PORT}`)
-);
+app.listen(PORT, () => console.log(`✅ Transi Autopilot live on port ${PORT}`));
