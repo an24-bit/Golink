@@ -23,6 +23,7 @@ const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;
+const OPENWEATHER_KEY = process.env.OPENWEATHER_KEY;
 
 // --- Homepage ---
 app.get("/", (req, res) => {
@@ -32,154 +33,115 @@ app.get("/", (req, res) => {
 
 // --- Debug Route ---
 app.get("/debug", (req, res) => {
-  const check = {
-    OPENAI_API_KEY: !!OPENAI_API_KEY,
-    TRANSPORT_API_ID: !!APP_ID,
-    TRANSPORT_API_KEY: !!APP_KEY,
-    GOOGLE_API_KEY: !!GOOGLE_API_KEY,
-    GOOGLE_CX_ID: !!GOOGLE_CX_ID,
-  };
   res.json({
     status: "✅ Transi Autopilot Diagnostic",
     environment: process.env.NODE_ENV || "production",
-    connected: check,
+    connected: {
+      OPENAI_API_KEY: !!OPENAI_API_KEY,
+      TRANSPORT_API_ID: !!APP_ID,
+      TRANSPORT_API_KEY: !!APP_KEY,
+      GOOGLE_API_KEY: !!GOOGLE_API_KEY,
+      GOOGLE_CX_ID: !!GOOGLE_CX_ID,
+      OPENWEATHER_KEY: !!OPENWEATHER_KEY,
+    },
     timestamp: new Date().toISOString(),
   });
 });
 
-// --- MAIN ASSISTANT ENDPOINT ---
+// --- Location + Travel Assistant ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
   const lat = req.query.lat;
   const lon = req.query.lon;
 
   console.log(`💬 User asked: ${question}`);
+
   if (!question.trim()) {
     return res.json({
       answer:
-        "Hello! I’m Transi Autopilot — your friendly travel assistant for Plymouth & the South West. Try asking things like: 'Next 43 from Royal Parade?' or 'Bus to city centre from here?'",
+        "Hello there! I’m Transi Autopilot — your travel assistant for buses, weather, and routes. Try asking: ‘Next 43 from Royal Parade?’ or ‘How do I get to city centre?’",
     });
   }
 
   try {
-    // ✅ 1. If user provided location and asked about buses — use live data
-    if (
-      (question.includes("bus") ||
-        question.includes("town") ||
-        question.includes("city")) &&
-      lat &&
-      lon
-    ) {
-      console.log("📍 Detected live location:", lat, lon);
-
-      // Find nearest stops
-      const nearURL = `https://transportapi.com/v3/uk/bus/stops/near.json?lat=${lat}&lon=${lon}&app_id=${APP_ID}&app_key=${APP_KEY}&page=1`;
-      const nearRes = await fetch(nearURL);
-      const nearData = await nearRes.json();
-      const nearest = nearData.stops?.[0];
-
-      if (!nearest) {
-        console.log("⚠️ No nearby stops found");
+    // --- Weather request ---
+    if (question.includes("weather") || question.includes("temperature")) {
+      if (!lat || !lon || !OPENWEATHER_KEY)
         return res.json({
-          question,
-          answer: "Sorry, I couldn’t find any bus stops near you right now.",
+          answer: "Please allow location access for live weather updates.",
         });
-      }
 
-      const stopCode = nearest.atcocode;
-      const stopName = nearest.name;
-      console.log(`🚌 Closest stop: ${stopName} (${stopCode})`);
+      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OPENWEATHER_KEY}`;
+      const w = await fetch(url).then((r) => r.json());
+      const answer = `Currently in ${w.name}, it's ${w.main.temp.toFixed(
+        1
+      )}°C with ${w.weather[0].description}.`;
+      return res.json({ question, answer });
+    }
 
-      // Get live departures from that stop
+    // --- Live Bus Info ---
+    if (
+      question.includes("bus") ||
+      question.includes("depart") ||
+      question.includes("leaves") ||
+      question.match(/\b\d{1,3}\b/)
+    ) {
+      let stopCode = "plymouth-royal-parade";
+      let stopName = "Royal Parade";
+
       const liveURL = `https://transportapi.com/v3/uk/bus/stop/${stopCode}/live.json?app_id=${APP_ID}&app_key=${APP_KEY}&group=route&nextbuses=yes`;
-      const liveRes = await fetch(liveURL);
-      const liveData = await liveRes.json();
+      console.log("🔗 Fetching live data:", liveURL);
 
-      if (!liveData?.departures) {
-        console.log("⚠️ No live departures, fallback to Google search...");
+      const response = await fetch(liveURL);
+      const data = await response.json();
+
+      if (!data?.departures) {
+        console.log("⚠️ No live bus data — switching to Google...");
         return await handleWebSearch(question, res);
       }
 
-      const routes = Object.values(liveData.departures).flat();
-      const toCity = routes.filter((b) =>
-        /city|town|royal parade|centre/i.test(b.direction)
+      const routes = Object.keys(data.departures);
+      const allBuses = routes.flatMap((r) =>
+        data.departures[r].slice(0, 3).map(
+          (bus) =>
+            `${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`
+        )
       );
 
-      const upcoming = (toCity.length ? toCity : routes)
-        .slice(0, 3)
-        .map(
-          (b) =>
-            `${b.line} to ${b.direction} at ${b.expected_departure_time}`
-        )
-        .join(", ");
-
-      return res.json({
-        question,
-        answer: `From ${stopName}, the next buses are: ${upcoming}.`,
-      });
+      const answer = `Upcoming buses from ${stopName}: ${allBuses.join(", ")}.`;
+      return res.json({ question, answer });
     }
 
-    // ✅ 2. Lost property or contact
+    // --- Routes or “how to get to” ---
     if (
-      question.includes("lost") ||
-      question.includes("found") ||
-      question.includes("wallet") ||
-      question.includes("phone") ||
-      question.includes("contact")
-    ) {
-      return await handleAIResponse(question, res);
-    }
-
-    // ✅ 3. Fares / Ticket prices
-    if (
-      question.includes("fare") ||
-      question.includes("price") ||
-      question.includes("ticket")
-    ) {
-      const fareURL = `https://transportapi.com/v3/uk/public/fares/from/plymouth/to/exeter.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
-      const response = await fetch(fareURL);
-      const data = await response.json();
-
-      if (data?.fares?.length) {
-        const cheapest = data.fares[0];
-        return res.json({
-          question,
-          answer: `The lowest fare from Plymouth to Exeter is around £${cheapest.price} (${cheapest.ticket_type}).`,
-        });
-      }
-      return await handleWebSearch(question, res);
-    }
-
-    // ✅ 4. Journey or “how to get” queries → web fallback
-    if (
-      question.includes("go to") ||
+      question.includes("how do i") ||
       question.includes("get to") ||
-      question.includes("travel to") ||
-      question.includes("how do i")
+      question.includes("go to") ||
+      question.includes("travel to")
     ) {
       return await handleWebSearch(question, res);
     }
 
-    // ✅ 5. Default → AI fallback
+    // --- Fallback AI ---
     return await handleAIResponse(question, res);
   } catch (err) {
-    console.error("❌ General error:", err);
+    console.error("❌ General Error:", err);
     return res.status(500).json({
-      answer:
-        "Sorry — something went wrong while processing that. Please try again shortly.",
+      answer: "Sorry — something went wrong while checking that.",
     });
   }
 });
 
-// --- AI fallback ---
+// --- OpenAI Response ---
 async function handleAIResponse(question, res) {
   if (!OPENAI_API_KEY)
     return res.json({ answer: "AI access not configured yet." });
 
   try {
     const aiPrompt = `
-You are Transi Autopilot — a polite British travel assistant for buses and transport in Plymouth.
-Answer naturally and briefly. If no data is available, tell the user where to check online.
+You are Transi Autopilot — a friendly UK travel assistant. 
+Help users find buses, stops, and advice for travelling around Plymouth and South West UK.
+If possible, give live or practical instructions based on the question.
 `;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -200,82 +162,49 @@ Answer naturally and briefly. If no data is available, tell the user where to ch
     const aiData = await aiRes.json();
     const aiAnswer =
       aiData.choices?.[0]?.message?.content ||
-      "Sorry, I couldn’t find an answer right now.";
+      "Sorry, I couldn’t find that information.";
     return res.json({ question, answer: aiAnswer });
   } catch (err) {
     console.error("🧠 AI Error:", err);
     return res.json({
-      answer: "AI is currently unavailable — please try again shortly.",
+      answer: "AI service currently unavailable.",
     });
   }
 }
 
-// --- Google fallback ---
+// --- Google Custom Search ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
-    console.log("❌ Missing Google API credentials.");
     return res.json({
       answer:
-        "I tried searching online, but Google access isn’t configured yet.",
+        "I tried searching the web but Google access isn’t configured yet.",
     });
   }
 
   try {
-    console.log("🌐 Starting Google Custom Search for:", query);
+    console.log("🌐 Google Search for:", query);
 
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
-      query
+      query + " site:plymouthbus.co.uk OR site:traveline.info"
     )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=2`;
 
     const searchRes = await fetch(googleUrl);
     const data = await searchRes.json();
 
-    if (!data.items || data.items.length === 0) {
-      console.log("⚠️ No Google results found.");
+    if (!data.items?.length) {
       return res.json({
-        answer:
-          "I searched online but couldn’t find a clear answer just now.",
+        answer: "I searched online but couldn’t find a clear answer.",
       });
     }
 
     const top = data.items[0];
-    console.log("✅ Found Google result:", top.link);
-
     const html = await fetch(top.link).then((r) => r.text());
     const $ = cheerio.load(html);
-    const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
+    const text = $("body").text().replace(/\s+/g, " ").slice(0, 1200);
 
-    const aiSummaryRes = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content:
-                "Summarise this transport info in 2–3 friendly sentences for a passenger:",
-            },
-            { role: "user", content: text },
-          ],
-        }),
-      }
-    );
-
-    const aiSummaryData = await aiSummaryRes.json();
-    const summary =
-      aiSummaryData.choices?.[0]?.message?.content ||
-      "I found something online, but couldn’t summarise it clearly.";
-
-    console.log("🧠 AI summary created.");
     return res.json({
       question: query,
-      answer: `${summary}\n(Source: ${top.link})`,
+      answer: `${text.slice(0, 250)}... (Source: ${top.link})`,
     });
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
@@ -286,7 +215,7 @@ async function handleWebSearch(query, res) {
   }
 }
 
-// --- START SERVER ---
+// --- Start Server ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Transi Autopilot live and listening on port ${PORT}`);
 });
