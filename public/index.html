@@ -21,6 +21,7 @@
       font-size: 1.1rem;
       color: #ddd;
       margin-bottom: 30px;
+      line-height: 1.6;
     }
     .chat-box {
       margin-bottom: 20px;
@@ -32,6 +33,7 @@
       border: none;
       font-size: 1rem;
       margin-right: 5px;
+      outline: none;
     }
     button {
       padding: 12px 18px;
@@ -88,6 +90,20 @@
   <button id="speakBtn">🔊 Read Aloud</button>
   <audio id="audioBox" controls hidden></audio>
 
+  <!-- Link to main JS -->
   <script src="script.js"></script>
+
+  <!-- Auto voice greeting -->
+  <script>
+    window.addEventListener("load", () => {
+      const greeting =
+        "Welcome to Transi Autopilot Assistant. How can I help you today?";
+      const speech = new SpeechSynthesisUtterance(greeting);
+      speech.lang = "en-GB";
+      speech.pitch = 1.05;
+      speech.rate = 1;
+      speechSynthesis.speak(speech);
+    });
+  </script>
 </body>
 </html>
