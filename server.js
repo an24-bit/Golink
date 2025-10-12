@@ -6,43 +6,39 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 
-// --- Paths ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- Express app setup ---
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// --- Load Environment Variables ---
 const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// --- Root route (serve the frontend page) ---
+// --- Serve the main page ---
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
-  console.log("🟢 User opened Transi Autopilot Assistant");
+  console.log("🟢 Visitor opened Transi Autopilot");
 });
 
-// --- Unified intelligent route ---
+// --- Core Assistant Logic ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
+  console.log(`💬 User asked: ${question}`);
 
   if (!question || question.trim() === "") {
     return res.json({
       answer:
-        "Hello there! I’m Transi Autopilot — your 24/7 public transport assistant. You can ask me things like ‘Next 43 from Royal Parade A4’, ‘How much is a single to Devonport’, or ‘Where can I get the 28 from?’.",
+        "Hello there! I’m Transi Autopilot — your friendly transport assistant. You can ask me things like 'When’s the next 43 from Royal Parade?', 'How much is a single ticket?', or 'Where can I get the 28 from?'.",
     });
   }
 
-  console.log(`🧠 Received question: ${question}`);
-
   try {
-    // --- Handle “live buses” ---
+    // --- Live Buses ---
     if (
       question.includes("bus") ||
       question.includes("depart") ||
@@ -72,35 +68,36 @@ app.get("/ask", async (req, res) => {
 
       if (!data.departures) {
         return res.json({
-          answer: `Hmm... I couldn’t see any live departures for ${stopName} right now. Maybe no buses are due this minute.`,
+          answer: `Hmm... I can’t see any live buses for ${stopName} at the moment. It could just mean there aren’t any due right now.`,
         });
       }
 
       const routeKeys = Object.keys(data.departures);
       let allRoutes = [];
+
       for (const route of routeKeys) {
         const departures = data.departures[route].slice(0, 3);
-        departures.forEach((bus) =>
-          allRoutes.push(`${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`)
-        );
+        departures.forEach((bus) => {
+          allRoutes.push(`${bus.line} to ${bus.direction} at ${bus.expected_departure_time}`);
+        });
       }
 
-      const answer = `Here’s what I found: upcoming buses from ${stopName} — ${allRoutes.join(", ")}.`;
+      const answer = `Alright, here’s what I found — the next few buses from ${stopName}: ${allRoutes.join(", ")}.`;
       return res.json({ question, answer });
     }
 
-    // --- Handle “journey planning” ---
+    // --- Journey Planning ---
     if (
       question.includes("go to") ||
       question.includes("get to") ||
       question.includes("travel to") ||
       question.includes("how do i")
     ) {
-      const answer = `Let me check... Normally, I’d use journey planners like Traveline South West. For now, this feature is being upgraded — but I’ll soon guide you with full routes from stop to stop.`;
+      const answer = `Let me think... Normally I’d check live journey data for you, but this feature is still being upgraded. For now, you can plan routes on Traveline South West — and soon you’ll be able to do it directly here.`;
       return res.json({ question, answer });
     }
 
-    // --- Handle “fare” or “price” ---
+    // --- Fare / Ticket Prices ---
     if (question.includes("fare") || question.includes("price") || question.includes("ticket")) {
       const fareURL = `https://transportapi.com/v3/uk/public/fares/from/plymouth/to/exeter.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
       const response = await fetch(fareURL);
@@ -108,22 +105,23 @@ app.get("/ask", async (req, res) => {
 
       if (data && data.fares && data.fares.length > 0) {
         const cheapest = data.fares[0];
-        const answer = `Okay — the cheapest fare from Plymouth to Exeter is around £${cheapest.price} (${cheapest.ticket_type}).`;
+        const answer = `The lowest fare from Plymouth to Exeter I could find is around £${cheapest.price}, using a ${cheapest.ticket_type}.`;
         return res.json({ question, answer });
       } else {
         return res.json({
-          answer: "I checked but couldn’t find any fare info right now. Try again shortly.",
+          answer: "I couldn’t get any fare data just now — it might be temporarily unavailable.",
         });
       }
     }
 
-    // --- OpenAI fallback for all other transport-related questions ---
+    // --- AI fallback (OpenAI answers) ---
     if (OPENAI_API_KEY) {
       const aiPrompt = `
-You are Transi Autopilot, a friendly UK transport assistant based in Plymouth.
-Answer like a helpful human customer-service agent: natural tone, polite, realistic, short answers.
-If question is outside bus data (like lost items or ticket offices), guide clearly and kindly.
-`;
+You are Transi Autopilot, a friendly UK transport assistant from Plymouth.
+Answer naturally, as if chatting to a bus passenger. Be concise, polite, and warm.
+If they ask about lost items, timetables, tickets, or local travel, respond like a real assistant would — not robotic.
+If it’s something you can’t check live, give helpful guidance instead.
+      `;
 
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -141,14 +139,14 @@ If question is outside bus data (like lost items or ticket offices), guide clear
       });
 
       const aiData = await aiRes.json();
-      const aiAnswer = aiData.choices?.[0]?.message?.content || "Sorry, I didn’t catch that.";
+      const aiAnswer = aiData.choices?.[0]?.message?.content || "Sorry, I didn’t quite catch that.";
       return res.json({ question, answer: aiAnswer });
     }
 
     // --- Default fallback ---
     res.json({
       answer:
-        "I’m here to help with buses, fares, routes, and stops. Try asking me something like ‘When’s the next 43 from Royal Parade A4?’",
+        "I’m here to help with live buses, fares, and travel info around Plymouth. Try asking me something like ‘Next 43 from Royal Parade A4?’ or ‘How much is a single to Devonport?’",
     });
   } catch (error) {
     console.error("❌ Error:", error);
