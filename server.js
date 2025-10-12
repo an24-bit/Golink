@@ -47,7 +47,7 @@ app.get("/debug", (req, res) => {
   });
 });
 
-// --- TEST GOOGLE ROUTE ---
+// --- Google Connection Test ---
 app.get("/test-google", async (req, res) => {
   try {
     const q = "Plymouth bus times Royal Parade";
@@ -55,11 +55,8 @@ app.get("/test-google", async (req, res) => {
       q
     )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=3`;
 
-    console.log("🔍 Testing Google API:", googleUrl);
-
     const response = await fetch(googleUrl);
     const data = await response.json();
-
     res.json(data);
   } catch (err) {
     console.error("Google API Error:", err);
@@ -116,13 +113,11 @@ app.get("/ask", async (req, res) => {
       }
 
       const liveURL = `https://transportapi.com/v3/uk/bus/stop/${stopCode}/live.json?app_id=${APP_ID}&app_key=${APP_KEY}&group=route&nextbuses=yes`;
-      console.log("🔗 Fetching live data:", liveURL);
-
       const response = await fetch(liveURL);
       const data = await response.json();
 
       if (!data?.departures) {
-        console.log("⚠️ No live bus data found — switching to Google search...");
+        console.log("⚠️ No live bus data — switching to Google search...");
         return await handleWebSearch(question, res);
       }
 
@@ -178,7 +173,7 @@ app.get("/ask", async (req, res) => {
   }
 });
 
-// --- OpenAI fallback ---
+// --- AI Response ---
 async function handleAIResponse(question, res) {
   if (!OPENAI_API_KEY)
     return res.json({ answer: "AI access not configured yet." });
@@ -218,37 +213,34 @@ If no data is available, guide the user on where to find information instead.
   }
 }
 
-// --- Google Custom Search fallback ---
+// --- Improved Google Custom Search ---
 async function handleWebSearch(query, res) {
-  if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
-    console.log("❌ Missing Google API credentials.");
-    return res.json({
-      answer: "I tried searching the web, but Google access isn’t configured yet.",
-    });
-  }
-
   try {
-    console.log("🌐 Starting Google Custom Search for:", query);
-
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
-      query
-    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=2`;
+      query + " site:plymouthbus.co.uk OR site:traveline.info"
+    )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=3`;
 
     const searchRes = await fetch(googleUrl);
     const data = await searchRes.json();
 
-    if (!data.items || data.items.length === 0) {
-      console.log("⚠️ No Google results found.");
+    if (!data.items || !data.items.length) {
       return res.json({
-        answer: "I searched online but couldn’t find a reliable answer just now.",
+        answer: "I searched online but couldn’t find a clear answer right now.",
       });
     }
 
     const top = data.items[0];
-    console.log("✅ Found Google result:", top.link);
+    const snippet = top.snippet?.trim();
+    const link = top.link;
 
-    // Fetch page text and summarise
-    const html = await fetch(top.link).then((r) => r.text());
+    if (snippet && snippet.length > 30) {
+      return res.json({
+        question: query,
+        answer: `${snippet} (Source: ${link})`,
+      });
+    }
+
+    const html = await fetch(link).then((r) => r.text());
     const $ = cheerio.load(html);
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
 
@@ -264,7 +256,7 @@ async function handleWebSearch(query, res) {
           {
             role: "system",
             content:
-              "Summarise this travel information in 2–3 clear, friendly sentences for a passenger:",
+              "Summarise this public transport info clearly in 2–3 short sentences for a passenger:",
           },
           { role: "user", content: text },
         ],
@@ -274,15 +266,13 @@ async function handleWebSearch(query, res) {
     const aiSummaryData = await aiSummaryRes.json();
     const summary =
       aiSummaryData.choices?.[0]?.message?.content ||
-      "I found something online, but couldn’t summarise it clearly.";
+      "I found something online but couldn’t summarise it clearly.";
 
-    console.log("🧠 AI summary generated successfully.");
-    return res.json({ question: query, answer: summary });
+    return res.json({ question: query, answer: `${summary}\n\n(Source: ${link})` });
   } catch (err) {
     console.error("🌐 Google Search Error:", err);
     return res.json({
-      answer:
-        "I tried searching online but couldn’t retrieve a clear answer right now.",
+      answer: "I tried searching online but couldn’t retrieve a clear answer right now.",
     });
   }
 }
