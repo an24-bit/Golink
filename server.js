@@ -13,24 +13,20 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// --- Middleware ---
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// --- Environment Variables ---
 const APP_ID = process.env.TRANSPORT_API_ID;
 const APP_KEY = process.env.TRANSPORT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID;
 
-// --- Homepage ---
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
   console.log("🟢 Visitor opened Transi Autopilot");
 });
 
-// --- Debug Route ---
 app.get("/debug", (req, res) => {
   const check = {
     OPENAI_API_KEY: !!OPENAI_API_KEY,
@@ -47,14 +43,13 @@ app.get("/debug", (req, res) => {
   });
 });
 
-// --- Google Connection Test ---
+// --- Smart Google test route ---
 app.get("/test-google", async (req, res) => {
   try {
-    const q = "Plymouth bus times Royal Parade";
+    const q = "Plymouth bus timetables Royal Parade";
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
       q
     )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=3`;
-
     const response = await fetch(googleUrl);
     const data = await response.json();
     res.json(data);
@@ -64,7 +59,7 @@ app.get("/test-google", async (req, res) => {
   }
 });
 
-// --- Main Assistant Endpoint ---
+// --- Main assistant endpoint ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
   console.log(`💬 User asked: ${question}`);
@@ -88,7 +83,7 @@ app.get("/ask", async (req, res) => {
       return await handleAIResponse(question, res);
     }
 
-    // --- Live Bus Info ---
+    // Live bus info
     if (
       question.includes("bus") ||
       question.includes("depart") ||
@@ -133,7 +128,7 @@ app.get("/ask", async (req, res) => {
       return res.json({ question, answer });
     }
 
-    // --- Fares / Tickets ---
+    // Fares / Tickets
     if (
       question.includes("fare") ||
       question.includes("price") ||
@@ -147,13 +142,13 @@ app.get("/ask", async (req, res) => {
         const cheapest = data.fares[0];
         return res.json({
           question,
-          answer: `The lowest fare from Plymouth to Exeter is around £${cheapest.price} (${cheapest.ticket_type}).`,
+          answer: `The lowest fare from Plymouth to Exeter is about £${cheapest.price} (${cheapest.ticket_type}).`,
         });
       }
       return await handleWebSearch(question, res);
     }
 
-    // --- Route or Journey planning ---
+    // Route or planning
     if (
       question.includes("go to") ||
       question.includes("get to") ||
@@ -163,7 +158,7 @@ app.get("/ask", async (req, res) => {
       return await handleWebSearch(question, res);
     }
 
-    // --- Otherwise, AI fallback ---
+    // Otherwise AI fallback
     return await handleAIResponse(question, res);
   } catch (err) {
     console.error("❌ General Error:", err);
@@ -213,11 +208,12 @@ If no data is available, guide the user on where to find information instead.
   }
 }
 
-// --- Improved Google Custom Search ---
+// --- Smarter Google search ---
 async function handleWebSearch(query, res) {
   try {
+    const refinedQuery = `${query} timetable next bus Royal Parade site:plymouthbus.co.uk OR site:traveline.info`;
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
-      query + " site:plymouthbus.co.uk OR site:traveline.info"
+      refinedQuery
     )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=3`;
 
     const searchRes = await fetch(googleUrl);
@@ -229,8 +225,16 @@ async function handleWebSearch(query, res) {
       });
     }
 
-    const top = data.items[0];
-    const snippet = top.snippet?.trim();
+    // pick the best snippet
+    const relevant = data.items.find(
+      (i) =>
+        i.snippet &&
+        !i.snippet.toLowerCase().includes("low boarding") &&
+        !i.snippet.toLowerCase().includes("route change")
+    );
+
+    const top = relevant || data.items[0];
+    const snippet = top.snippet?.trim() || "";
     const link = top.link;
 
     if (snippet && snippet.length > 30) {
@@ -240,6 +244,7 @@ async function handleWebSearch(query, res) {
       });
     }
 
+    // fallback to page summary
     const html = await fetch(link).then((r) => r.text());
     const $ = cheerio.load(html);
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 1500);
@@ -256,7 +261,7 @@ async function handleWebSearch(query, res) {
           {
             role: "system",
             content:
-              "Summarise this public transport info clearly in 2–3 short sentences for a passenger:",
+              "Summarise this transport info clearly in 2–3 short sentences for a passenger:",
           },
           { role: "user", content: text },
         ],
@@ -277,7 +282,6 @@ async function handleWebSearch(query, res) {
   }
 }
 
-// --- Start Server ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Transi Autopilot live and listening on port ${PORT}`);
 });
