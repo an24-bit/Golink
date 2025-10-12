@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import * as cheerio from "cheerio";
+import { getLocationName, geocodePlace } from "./helpers/location.js"; // NEW
 
 dotenv.config();
 
@@ -48,7 +49,7 @@ app.get("/debug", (req, res) => {
   });
 });
 
-// --- Location + Travel Assistant ---
+// --- Main Assistant Endpoint ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
   const lat = req.query.lat;
@@ -64,16 +65,33 @@ app.get("/ask", async (req, res) => {
   }
 
   try {
-    // --- Weather request ---
+    // --- Handle location phrases ---
+    if (!lat && question.includes("from ")) {
+      const place = question.split("from ")[1]?.split(" ")[0];
+      const coords = await geocodePlace(place);
+      if (coords) {
+        req.query.lat = coords.lat;
+        req.query.lon = coords.lon;
+        console.log(`📍 Geocoded ${place}: ${coords.lat}, ${coords.lon}`);
+      }
+    }
+
+    // --- Weather info ---
     if (question.includes("weather") || question.includes("temperature")) {
-      if (!lat || !lon || !OPENWEATHER_KEY)
+      if (!OPENWEATHER_KEY)
+        return res.json({
+          answer: "Weather system not configured yet.",
+        });
+
+      if (!lat || !lon)
         return res.json({
           answer: "Please allow location access for live weather updates.",
         });
 
       const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OPENWEATHER_KEY}`;
       const w = await fetch(url).then((r) => r.json());
-      const answer = `Currently in ${w.name}, it's ${w.main.temp.toFixed(
+      const place = w.name || (await getLocationName(lat, lon));
+      const answer = `Currently in ${place}, it's ${w.main.temp.toFixed(
         1
       )}°C with ${w.weather[0].description}.`;
       return res.json({ question, answer });
@@ -112,7 +130,7 @@ app.get("/ask", async (req, res) => {
       return res.json({ question, answer });
     }
 
-    // --- Routes or “how to get to” ---
+    // --- Routes / Journey planning ---
     if (
       question.includes("how do i") ||
       question.includes("get to") ||
@@ -122,7 +140,7 @@ app.get("/ask", async (req, res) => {
       return await handleWebSearch(question, res);
     }
 
-    // --- Fallback AI ---
+    // --- Otherwise, fallback to AI ---
     return await handleAIResponse(question, res);
   } catch (err) {
     console.error("❌ General Error:", err);
@@ -132,7 +150,7 @@ app.get("/ask", async (req, res) => {
   }
 });
 
-// --- OpenAI Response ---
+// --- OpenAI fallback ---
 async function handleAIResponse(question, res) {
   if (!OPENAI_API_KEY)
     return res.json({ answer: "AI access not configured yet." });
@@ -140,8 +158,8 @@ async function handleAIResponse(question, res) {
   try {
     const aiPrompt = `
 You are Transi Autopilot — a friendly UK travel assistant. 
-Help users find buses, stops, and advice for travelling around Plymouth and South West UK.
-If possible, give live or practical instructions based on the question.
+Help users find live bus times, stops, or travel advice in the South West of England.
+If location or timetable data is missing, politely guide them where to look.
 `;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -172,7 +190,7 @@ If possible, give live or practical instructions based on the question.
   }
 }
 
-// --- Google Custom Search ---
+// --- Google Custom Search fallback ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
     return res.json({
@@ -214,6 +232,30 @@ async function handleWebSearch(query, res) {
     });
   }
 }
+
+// --- Twilio Voice Webhook (for future phone connection) ---
+app.post("/voice", express.urlencoded({ extended: true }), async (req, res) => {
+  const twimlStart = '<?xml version="1.0" encoding="UTF-8"?><Response>';
+  const twimlEnd = "</Response>";
+
+  const question =
+    req.body.SpeechResult || req.body.TranscriptionText || "bus info";
+  console.log("📞 Voice call query:", question);
+
+  const answerData = await fetch(
+    `${req.protocol}://${req.get("host")}/ask?q=${encodeURIComponent(question)}`
+  ).then((r) => r.json());
+
+  const responseSpeech =
+    answerData.answer || "Sorry, I couldn’t get live data right now.";
+
+  const twiml =
+    `${twimlStart}<Say voice="alice" language="en-GB">${responseSpeech}</Say>` +
+    `<Pause length="1"/><Redirect>/voice</Redirect>${twimlEnd}`;
+
+  res.type("text/xml");
+  res.send(twiml);
+});
 
 // --- Start Server ---
 app.listen(PORT, "0.0.0.0", () => {
