@@ -90,11 +90,71 @@
   <button id="speakBtn">🔊 Read Aloud</button>
   <audio id="audioBox" controls hidden></audio>
 
-  <!-- Link to main JS -->
-  <script src="script.js"></script>
-
-  <!-- Auto voice greeting -->
+  <!-- ================= Main JS ================= -->
   <script>
+    const askBtn = document.getElementById("askBtn");
+    const voiceBtn = document.getElementById("voiceBtn");
+    const speakBtn = document.getElementById("speakBtn");
+    const responseBox = document.getElementById("responseBox");
+
+    // --- Ask button click handler ---
+    askBtn.addEventListener("click", () => askQuestion());
+
+    // --- Enter key trigger ---
+    document.getElementById("question").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") askQuestion();
+    });
+
+    // --- Speech input ---
+    voiceBtn.addEventListener("click", () => {
+      const recognition =
+        new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = "en-GB";
+      recognition.start();
+      recognition.onresult = async (event) => {
+        const q = event.results[0][0].transcript;
+        document.getElementById("question").value = q;
+        askQuestion();
+      };
+    });
+
+    // --- Read answer aloud ---
+    speakBtn.addEventListener("click", () => {
+      const answer = responseBox.textContent;
+      const utterance = new SpeechSynthesisUtterance(answer);
+      utterance.lang = "en-GB";
+      utterance.pitch = 1;
+      utterance.rate = 1;
+      speechSynthesis.speak(utterance);
+    });
+
+    // --- Ask question and include location ---
+    async function askQuestion() {
+      const q = document.getElementById("question").value.trim();
+      if (!q) return;
+      responseBox.innerText = "Fetching your answer...";
+
+      // Try geolocation
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          const response = await fetch(
+            `/ask?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lon}`
+          );
+          const data = await response.json();
+          responseBox.innerText = data.answer || "No response received.";
+        },
+        async () => {
+          // Fallback if location not granted
+          const response = await fetch(`/ask?q=${encodeURIComponent(q)}`);
+          const data = await response.json();
+          responseBox.innerText = data.answer || "No response received.";
+        }
+      );
+    }
+
+    // --- Welcome voice greeting ---
     window.addEventListener("load", () => {
       const greeting =
         "Welcome to Transi Autopilot Assistant. How can I help you today?";
