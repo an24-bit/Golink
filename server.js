@@ -1,78 +1,72 @@
 import express from "express";
 import fetch from "node-fetch";
-import OpenAI from "openai";
+import fs from "fs-extra";
+import { summarise } from "./helpers/summarise.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// environment keys
-const BING_KEY = process.env.BING_KEY;       // Bing Search or SerpAPI key
-const OPENAI_KEY = process.env.OPENAI_KEY;   // OpenAI API key
+// Root route
+app.get("/", (_, res) => res.send("🚍 Transi AI Assistant is running smoothly!"));
 
-// initialise OpenAI client
-const openai = new OpenAI({
-  apiKey: OPENAI_KEY
-});
-
-// root route
-app.get("/", (_, res) => {
-  res.send("🤖 Live Travel Assistant running");
-});
-
-// ------------------------------------------------------------------
-// main endpoint
+// Main route
 app.get("/ask", async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: "missing ?q=question" });
 
-  console.log(`🟢 New request received: "${q}"`);
-
   try {
-    // 1️⃣ search Bing for context
-    const bingUrl = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(q)}`;
-    const r = await fetch(bingUrl, {
-      headers: { "Ocp-Apim-Subscription-Key": BING_KEY }
-    });
+    // 🔎 Google Custom Search API (replace later with your own engine)
+    const GOOGLE_SEARCH_KEY = process.env.GOOGLE_SEARCH_KEY;
+    const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
+    const searchUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
+      q
+    )}&key=${GOOGLE_SEARCH_KEY}&cx=${GOOGLE_CSE_ID}`;
+
+    const r = await fetch(searchUrl);
     const data = await r.json();
 
-    // 2️⃣ extract top snippets
-    const snippets = data.webPages?.value?.slice(0, 3)
-      ?.map(p => `${p.name}: ${p.snippet}`)
-      .join("\n") || "No snippets found.";
+    const snippets = data.items
+      ?.slice(0, 3)
+      .map((p) => `${p.title}: ${p.snippet}`)
+      .join("\n");
 
-    // 3️⃣ summarise with OpenAI
-    const gptPrompt = `Question: ${q}
-Below are short snippets from web search results.
-Create a short, natural spoken-style answer based only on these snippets.
+    // 💬 Generate text summary using OpenAI
+    const summary = await summarise(q, snippets);
 
-Snippets:
-${snippets}`;
+    // 🔊 Convert to voice (Google TTS)
+    const GOOGLE_TTS_KEY = process.env.GOOGLE_TTS_KEY;
+    const voiceUrl =
+      "https://texttospeech.googleapis.com/v1/text:synthesize?key=" +
+      GOOGLE_TTS_KEY;
 
-    const gpt = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: gptPrompt }],
-      max_tokens: 150,
-      temperature: 0.3
+    const ttsResponse = await fetch(voiceUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: { text: summary },
+        voice: { languageCode: "en-GB", name: "en-GB-Neural2-A" },
+        audioConfig: { audioEncoding: "MP3" },
+      }),
     });
 
-    const answer = gpt.choices[0].message.content.trim();
+    const ttsData = await ttsResponse.json();
+    const audioBase64 = ttsData.audioContent;
+    const filename = `tts/transi_${Date.now()}.mp3`;
 
-    // log both question and answer
-    console.log("------------------------------------------------");
-    console.log(`❓ Question: ${q}`);
-    console.log(`💬 Answer: ${answer}`);
-    console.log("------------------------------------------------");
+    await fs.ensureDir("public/tts");
+    await fs.writeFile(`public/${filename}`, Buffer.from(audioBase64, "base64"));
 
-    res.json({ question: q, answer });
-
+    res.json({
+      question: q,
+      answer: summary,
+      audio: `/${filename}`,
+    });
   } catch (err) {
-    console.error("🚨 Error:", err);
-    res.status(500).json({ error: "search or summary failed", details: err.message });
+    console.error("Error:", err);
+    res.status(500).json({ error: "processing failed" });
   }
 });
-// ------------------------------------------------------------------
 
-// start server
-app.listen(PORT, () => {
-  console.log(`✅ Server listening on port ${PORT}`);
-});
+app.use("/tts", express.static("public/tts"));
+
+app.listen(PORT, () => console.log(`✅ Transi server live on port ${PORT}`));
