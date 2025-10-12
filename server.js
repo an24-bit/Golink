@@ -1,3 +1,33 @@
+import express from "express";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+dotenv.config();
+
+// --- Paths ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- Express app setup ---
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json());
+
+// --- Load Environment Variables ---
+const APP_ID = process.env.TRANSPORT_API_ID;
+const APP_KEY = process.env.TRANSPORT_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// --- Main Route for Checking Deployment ---
+app.get("/", (req, res) => {
+  res.send("🚍 Transi AI Assistant is running with TransportAPI + OpenAI integration!");
+});
+
+// --- Unified AI / Transport Question Handler ---
 app.get("/ask", async (req, res) => {
   const question = req.query.q?.toLowerCase() || "";
 
@@ -74,7 +104,6 @@ app.get("/ask", async (req, res) => {
     }
 
     // --- AI fallback (OpenAI for general questions) ---
-    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     if (OPENAI_API_KEY) {
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -88,7 +117,7 @@ app.get("/ask", async (req, res) => {
             {
               role: "system",
               content:
-                "You are Transi AI, a helpful UK public transport assistant. Provide clear answers about buses, travel, and lost property in the Plymouth and South West area.",
+                "You are Transi AI, a helpful UK public transport assistant. Provide clear, friendly answers about buses, travel, and lost property in Plymouth and the South West.",
             },
             { role: "user", content: question },
           ],
@@ -110,3 +139,6 @@ app.get("/ask", async (req, res) => {
     res.status(500).json({ error: "Something went wrong while fetching transport data." });
   }
 });
+
+// --- Start server ---
+app.listen(PORT, () => console.log(`✅ Transi AI running on port ${PORT}`));
