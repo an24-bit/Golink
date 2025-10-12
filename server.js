@@ -1,113 +1,77 @@
 import express from "express";
 import fetch from "node-fetch";
-import fs from "fs-extra";
-import { summarise } from "./helpers/summarise.js";
+import cors from "cors";
+import dotenv from "dotenv";
 
+dotenv.config();
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(cors());
+app.use(express.json());
 
-// Root route
-app.use(express.static("public"));
+// Replace these with your TransportAPI keys
+const APP_ID = process.env.TRANSPORT_API_ID;  // your app_id
+const APP_KEY = process.env.TRANSPORT_API_KEY; // your app_key
 
-// 🔊 Test route — check if Google TTS is working
-app.get("/test-tts", async (_, res) => {
-  try {
-    const GOOGLE_TTS_KEY = process.env.GOOGLE_TTS_KEY;
-    if (!GOOGLE_TTS_KEY)
-      return res.status(400).send("❌ GOOGLE_TTS_KEY missing in environment.");
-
-    const response = await fetch(
-      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input: { text: "Hello! Your Transi AI voice system is working fine." },
-          voice: { languageCode: "en-GB", name: "en-GB-Neural2-A" },
-          audioConfig: { audioEncoding: "MP3" },
-        }),
-      }
-    );
-
-    const data = await response.json();
-    if (data.audioContent) {
-      res.send("✅ Google Text-to-Speech is working fine!");
-    } else {
-      res.status(400).json(data);
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("❌ Error testing TTS: " + err.message);
-  }
+// --- Base route ---
+app.get("/", (req, res) => {
+  res.send("🚌 Transi AI is connected to TransportAPI!");
 });
 
-// Main route
+// --- Main /ask endpoint ---
 app.get("/ask", async (req, res) => {
-  const q = req.query.q;
-  if (!q) return res.status(400).json({ error: "missing ?q=question" });
+  const question = req.query.q?.toLowerCase();
 
   try {
-    // 🔎 Google Custom Search API
-    const GOOGLE_SEARCH_KEY = process.env.GOOGLE_SEARCH_KEY;
-    const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
-    const searchUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
-      q
-    )}&key=${GOOGLE_SEARCH_KEY}&cx=${GOOGLE_CSE_ID}`;
+    if (!question) {
+      return res.json({ error: "No question provided." });
+    }
 
-    const r = await fetch(searchUrl);
-    const data = await r.json();
+    // Example: "next bus from crownhill to city centre"
+    if (question.includes("bus") || question.includes("next")) {
+      // Replace with your nearest stop code (e.g. 1100CRO12345)
+      const stopCode = "plym-admiralty-street"; // example
+      const url = `https://transportapi.com/v3/uk/bus/stop/${stopCode}/live.json?app_id=${APP_ID}&app_key=${APP_KEY}&group=route&nextbuses=yes`;
 
-    const snippets = data.items
-      ?.slice(0, 3)
-      .map((p) => `${p.title}: ${p.snippet}`)
-      .join("\n");
+      const response = await fetch(url);
+      const data = await response.json();
 
-    // 💬 Generate text summary using OpenAI
-    const summary = await summarise(q, snippets);
+      if (!data.departures) {
+        return res.json({ answer: "No live bus data found at the moment." });
+      }
 
-    // 🔊 Convert summary to speech (Google TTS)
-    const GOOGLE_TTS_KEY = process.env.GOOGLE_TTS_KEY;
-    const voiceUrl =
-      "https://texttospeech.googleapis.com/v1/text:synthesize?key=" +
-      GOOGLE_TTS_KEY;
+      const firstRoute = Object.keys(data.departures)[0];
+      const firstBus = data.departures[firstRoute][0];
 
-    const ttsResponse = await fetch(voiceUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        input: { text: summary },
-        voice: { languageCode: "en-GB", name: "en-GB-Neural2-A" },
-        audioConfig: { audioEncoding: "MP3" },
-      }),
+      const answer = `The next ${firstBus.line} to ${firstBus.direction} leaves at ${firstBus.expected_departure_time} from ${data.stop_name}.`;
+      return res.json({ question, answer });
+    }
+
+    // Example: “plan route from devonport to mutley plain”
+    if (question.includes("route") || question.includes("plan")) {
+      const url = `https://transportapi.com/v3/uk/public/journey/from/devonport/to/mutley_plain.json?app_id=${APP_ID}&app_key=${APP_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        const duration = route.duration.text || "unknown time";
+        const answer = `Best route from Devonport to Mutley Plain takes about ${duration}.`;
+        return res.json({ question, answer });
+      } else {
+        return res.json({ answer: "No route found for that journey." });
+      }
+    }
+
+    // Default fallback
+    return res.json({
+      answer: "I'm here to help with bus times, routes, and transport info — try asking 'next bus from Crownhill to city centre'.",
     });
-
-    const ttsData = await ttsResponse.json();
-
-    if (!ttsData.audioContent)
-      return res.status(400).json({
-        error: "TTS request failed",
-        details: ttsData,
-      });
-
-    const audioBase64 = ttsData.audioContent;
-    const filename = `tts/transi_${Date.now()}.mp3`;
-
-    await fs.ensureDir("public/tts");
-    await fs.writeFile(`public/${filename}`, Buffer.from(audioBase64, "base64"));
-
-    res.json({
-      question: q,
-      answer: summary,
-      audio: `/${filename}`,
-    });
-  } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ error: "processing failed" });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ error: "Something went wrong while fetching bus info." });
   }
 });
 
-app.use("/tts", express.static("public/tts"));
-
-app.listen(PORT, () =>
-  console.log(`✅ Transi server live on port ${PORT}`)
-);
+// --- Start server ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Transi AI running on port ${PORT}`));
