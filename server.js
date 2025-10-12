@@ -198,7 +198,7 @@ If no data is available, guide the user on where to find information instead.
   }
 }
 
-// --- Google Custom Search fallback (Fixed Version) ---
+// --- Google Custom Search fallback (✅ Latest Working Version) ---
 async function handleWebSearch(query, res) {
   if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) {
     console.log("❌ Missing Google API credentials.");
@@ -211,7 +211,7 @@ async function handleWebSearch(query, res) {
     console.log("🌐 Starting Google Custom Search for:", query);
 
     const googleUrl = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(
-      `site:traveline.info OR site:plymouthbus.co.uk ${query}`
+      query
     )}&key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX_ID}&num=2`;
 
     const searchRes = await fetch(googleUrl);
