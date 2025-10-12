@@ -3,21 +3,90 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Transi AI Assistant</title>
+  <title>Transi Autopilot Assistant</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #111;
+      color: #f2f2f2;
+      text-align: center;
+      padding: 40px;
+    }
+    h1 {
+      color: #a78bfa;
+      font-size: 2rem;
+    }
+    #welcome {
+      font-size: 1.1rem;
+      color: #ddd;
+      margin-bottom: 30px;
+    }
+    .chat-box {
+      margin-bottom: 20px;
+    }
+    input {
+      width: 70%;
+      padding: 12px;
+      border-radius: 6px;
+      border: none;
+      font-size: 1rem;
+      margin-right: 5px;
+    }
+    button {
+      padding: 12px 18px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      background: #4e89ff;
+      color: #fff;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #3c6fe0;
+    }
+    .response-box {
+      margin-top: 25px;
+      padding: 18px;
+      background: #222;
+      border-radius: 10px;
+      width: 80%;
+      margin-left: auto;
+      margin-right: auto;
+      font-size: 1.05rem;
+      line-height: 1.5;
+      text-align: left;
+    }
+    #speakBtn, #voiceBtn {
+      margin-top: 20px;
+    }
+    audio {
+      margin-top: 20px;
+      width: 80%;
+    }
+  </style>
 </head>
+
 <body>
-  <h1>🚍 Transi AI Assistant</h1>
-  <p class="subtitle">Ask me anything about buses, fares, routes, or travel in Plymouth & South West.</p>
+  <h1>🚌 Transi Autopilot Assistant</h1>
+  <p id="welcome">
+    Hello there! I'm Transi Autopilot — your travel assistant for buses, tickets, and routes.<br>
+    You can type or speak your question, and I'll find the latest info for you.
+  </p>
 
   <div class="chat-box">
-    <input id="question" type="text" placeholder="Ask a question..." />
+    <input id="question" type="text" placeholder="Type or speak your question..." />
     <button id="askBtn">Ask</button>
+    <button id="voiceBtn">🎤 Speak</button>
   </div>
 
-  <div id="responseBox" class="response-box">Hello there! I’m Transi AI — ready to help you with live buses, tickets, and routes.</div>
+  <div id="responseBox" class="response-box">
+    Ready when you are — ask me about live buses, fares, or routes!
+  </div>
 
   <button id="speakBtn">🔊 Read Aloud</button>
+  <audio id="audioBox" controls hidden></audio>
 
   <script src="script.js"></script>
 </body>
