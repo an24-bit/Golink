@@ -1,7 +1,7 @@
 {
   "name": "transi-ai",
-  "version": "1.1.0",
-  "description": "Transi AI – South West UK transport assistant with text, voice, and AI support",
+  "version": "1.1.1",
+  "description": "Transi AI – South West UK transport assistant with text, voice, live data, and AI-powered web search",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -14,7 +14,9 @@
     "express": "^4.19.2",
     "fs-extra": "^11.2.0",
     "node-fetch": "^3.3.2",
-    "openai": "^4.58.0"
+    "openai": "^4.58.0",
+    "googleapis": "^144.0.0",
+    "cheerio": "^1.0.0-rc.12"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
@@ -33,7 +35,9 @@
     "assistant",
     "render",
     "plymouth",
-    "bus-tracker"
+    "bus-tracker",
+    "google-search",
+    "openai"
   ],
   "author": "Ali",
   "license": "MIT",
