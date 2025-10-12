@@ -60,7 +60,7 @@
       line-height: 1.5;
       text-align: left;
     }
-    #speakBtn, #voiceBtn {
+    #speakBtn, #voiceBtn, #mapBtn {
       margin-top: 20px;
     }
     audio {
@@ -88,6 +88,7 @@
   </div>
 
   <button id="speakBtn">🔊 Read Aloud</button>
+  <button id="mapBtn">🗺️ Show Map</button>
   <audio id="audioBox" controls hidden></audio>
 
   <!-- ================= Main JS ================= -->
@@ -95,7 +96,12 @@
     const askBtn = document.getElementById("askBtn");
     const voiceBtn = document.getElementById("voiceBtn");
     const speakBtn = document.getElementById("speakBtn");
+    const mapBtn = document.getElementById("mapBtn");
     const responseBox = document.getElementById("responseBox");
+
+    let lastLat = null;
+    let lastLon = null;
+    let lastStopName = null;
 
     // --- Ask button click handler ---
     askBtn.addEventListener("click", () => askQuestion());
@@ -128,31 +134,49 @@
       speechSynthesis.speak(utterance);
     });
 
-    // --- Ask question and include location ---
+    // --- Ask question with live location ---
     async function askQuestion() {
       const q = document.getElementById("question").value.trim();
       if (!q) return;
       responseBox.innerText = "Fetching your answer...";
 
-      // Try geolocation
+      // Get GPS
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
+          lastLat = pos.coords.latitude;
+          lastLon = pos.coords.longitude;
+
           const response = await fetch(
-            `/ask?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lon}`
+            `/ask?q=${encodeURIComponent(q)}&lat=${lastLat}&lon=${lastLon}`
           );
           const data = await response.json();
+
           responseBox.innerText = data.answer || "No response received.";
+
+          // Extract bus stop name from answer if present
+          const stopMatch = data.answer?.match(/From (.*?)\,/i);
+          if (stopMatch) lastStopName = stopMatch[1];
         },
         async () => {
-          // Fallback if location not granted
           const response = await fetch(`/ask?q=${encodeURIComponent(q)}`);
           const data = await response.json();
           responseBox.innerText = data.answer || "No response received.";
         }
       );
     }
+
+    // --- Show map to nearest stop ---
+    mapBtn.addEventListener("click", () => {
+      if (lastLat && lastLon && lastStopName) {
+        const mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${lastLat},${lastLon}&destination=${encodeURIComponent(lastStopName)}+bus+stop`;
+        window.open(mapUrl, "_blank");
+      } else if (lastLat && lastLon) {
+        const mapUrl = `https://www.google.com/maps/@${lastLat},${lastLon},15z`;
+        window.open(mapUrl, "_blank");
+      } else {
+        alert("Ask a question first so I can detect your location.");
+      }
+    });
 
     // --- Welcome voice greeting ---
     window.addEventListener("load", () => {
