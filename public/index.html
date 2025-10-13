@@ -20,7 +20,7 @@
   ></script>
 
   <style>
-    /* Simple pulse for LIVE indicator */
+    /* LIVE indicator pulse */
     #live-indicator {
       display: inline-block;
       margin-left: 8px;
@@ -32,7 +32,7 @@
       animation: blink 1s infinite alternate;
     }
     @keyframes blink {
-      from { opacity: 0.3; transform: scale(0.9); }
+      from { opacity: 0.4; transform: scale(0.9); }
       to { opacity: 1; transform: scale(1.2); }
     }
   </style>
@@ -41,7 +41,7 @@
 <body>
   <h1>🚌 Transi Autopilot <span id="live-indicator" title="Live data active"></span></h1>
   <p id="welcome">
-    Hi there! I’m <b>Transi Autopilot</b> — your real-time travel assistant for Plymouth & the South West.<br>
+    Hi there! I’m <b>Transi Autopilot</b> — your real-time travel assistant for Plymouth & the South West.<br />
     I show <b>live buses</b> around you, help plan routes, and can even <b>talk back</b> with voice.
   </p>
 
@@ -63,21 +63,16 @@
   <script src="script.js"></script>
 
   <script>
-    // 🔄 Live data indicator effect (pulses when update arrives)
-    let liveIndicator = document.getElementById("live-indicator");
-    let lastUpdate = 0;
-
-    function pulseLiveIndicator() {
+    // 🔄 Live indicator pulse when new update arrives
+    const liveIndicator = document.getElementById("live-indicator");
+    window.pulseLiveIndicator = () => {
       liveIndicator.style.boxShadow = "0 0 10px lime";
       liveIndicator.style.background = "lime";
       setTimeout(() => {
         liveIndicator.style.boxShadow = "0 0 6px red";
         liveIndicator.style.background = "red";
       }, 800);
-    }
-
-    // Expose function globally so script.js can trigger it
-    window.pulseLiveIndicator = pulseLiveIndicator;
+    };
   </script>
 </body>
 </html>
