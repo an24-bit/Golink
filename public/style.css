@@ -36,15 +36,16 @@ body {
 /* --- Header --- */
 h1 {
   margin-top: 25px;
-  font-size: 1.8rem;
+  font-size: 1.9rem;
   color: #a78bfa;
   text-align: center;
+  letter-spacing: 0.5px;
 }
 
 #welcome {
   text-align: center;
   color: var(--text-soft);
-  max-width: 700px;
+  max-width: 720px;
   margin: 10px 20px 25px;
   line-height: 1.6;
   font-size: 1.05rem;
@@ -52,13 +53,41 @@ h1 {
 
 /* --- Map --- */
 #map {
-  height: 280px;
+  height: 300px;
   width: 90%;
   max-width: 750px;
   border-radius: var(--radius);
   margin-bottom: 25px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
   overflow: hidden;
+  border: 1px solid #222;
+}
+
+/* --- Leaflet popups --- */
+.leaflet-popup-content {
+  color: #111;
+  font-family: var(--font-main);
+  font-size: 0.95rem;
+}
+
+.leaflet-popup-content b {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.leaflet-popup-content button {
+  padding: 6px 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.leaflet-popup-content button:hover {
+  background: var(--accent-hover);
 }
 
 /* --- Chat Box --- */
@@ -80,10 +109,15 @@ h1 {
   outline: none;
   background: #222;
   color: var(--text-main);
+  transition: background 0.2s;
 }
 
 .chat-box input::placeholder {
   color: #999;
+}
+
+.chat-box input:focus {
+  background: #2a2a2a;
 }
 
 .chat-box button {
@@ -94,11 +128,12 @@ h1 {
   background: var(--accent);
   color: #fff;
   font-size: 1rem;
-  transition: background 0.2s;
+  transition: background 0.2s, transform 0.1s;
 }
 
 .chat-box button:hover {
   background: var(--accent-hover);
+  transform: scale(1.03);
 }
 
 /* --- Response Box --- */
@@ -115,7 +150,20 @@ h1 {
   color: #f0f0f0;
   white-space: pre-wrap;
   word-break: break-word;
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.35);
+  border: 1px solid #222;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* --- Voice Buttons --- */
@@ -126,6 +174,14 @@ h1 {
 
 #speakBtn:hover {
   background: var(--voice-hover);
+}
+
+#voiceBtn {
+  background: #2d2d2d;
+}
+
+#voiceBtn:hover {
+  background: #3a3a3a;
 }
 
 /* --- Audio --- */
@@ -142,6 +198,10 @@ audio {
   }
   #welcome {
     font-size: 1rem;
+    padding: 0 10px;
+  }
+  #map {
+    height: 260px;
   }
   .chat-box input {
     font-size: 0.95rem;
