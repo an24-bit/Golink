@@ -1,7 +1,7 @@
 {
   "name": "transi-autopilot",
-  "version": "2.0.0",
-  "description": "Transi Autopilot – Intelligent UK transport and travel assistant with AI, voice, maps, and live data integration.",
+  "version": "2.1.0",
+  "description": "Transi Autopilot – Intelligent UK transport and travel assistant combining AI, voice, maps, and live data for Plymouth & the South West.",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -37,11 +37,18 @@
     "travel",
     "maps",
     "openai",
-    "twilio"
+    "twilio",
+    "leaflet",
+    "transportapi",
+    "render"
   ],
   "author": "Ali",
   "license": "MIT",
   "render": {
     "startCommand": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aliemkbright/transi-autopilot.git"
   }
 }
