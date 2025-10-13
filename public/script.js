@@ -1,15 +1,18 @@
-// --- Transi Autopilot Frontend Script ---
-// Handles input, voice, GPS, map, API fetch requests, and speech output
+// =====================================
+//  Transi Autopilot — Frontend v3.0
+//  AI + Voice + Live Bus Tracking
+//  Author: Ali
+// =====================================
 
 const askBtn = document.getElementById("askBtn");
 const voiceBtn = document.getElementById("voiceBtn");
 const speakBtn = document.getElementById("speakBtn");
 const questionBox = document.getElementById("question");
 const responseBox = document.getElementById("responseBox");
-const audioBox = document.getElementById("audioBox");
 
 let userLocation = { lat: null, lon: null };
 let map;
+let busMarkers = [];
 
 // --- Detect user location and load map ---
 if ("geolocation" in navigator) {
@@ -22,8 +25,7 @@ if ("geolocation" in navigator) {
     },
     (err) => {
       console.warn("⚠️ Location access denied:", err.message);
-      // Default fallback to Plymouth City Centre
-      initMap(50.3755, -4.1427);
+      initMap(50.3755, -4.1427); // Plymouth fallback
     }
   );
 } else {
@@ -31,9 +33,9 @@ if ("geolocation" in navigator) {
   initMap(50.3755, -4.1427);
 }
 
-// --- Map setup using Leaflet ---
+// --- Initialise Map (Leaflet) ---
 async function initMap(lat, lon) {
-  map = L.map("map").setView([lat, lon], 13);
+  map = L.map("map").setView([lat, lon], 16); // zoomed in for local view
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors",
@@ -42,28 +44,33 @@ async function initMap(lat, lon) {
   const userMarker = L.marker([lat, lon]).addTo(map);
   userMarker.bindPopup("📍 You are here").openPopup();
 
+  await loadNearbyStops(lat, lon);
+  await updateLiveBuses(lat, lon);
+
+  // Refresh live buses every 30 seconds
+  setInterval(() => updateLiveBuses(lat, lon), 30000);
+}
+
+// --- Load Nearby Stops ---
+async function loadNearbyStops(lat, lon) {
   try {
     const res = await fetch(`/api/nearby?lat=${lat}&lon=${lon}`);
     const data = await res.json();
-    if (data.member) {
-      data.member.forEach((stop) => {
-        const sLat = stop.latitude;
-        const sLon = stop.longitude;
-        const sName = stop.name || "Bus Stop";
-        const atcocode = stop.atcocode || "";
+    if (!data.member) return;
 
-        const marker = L.marker([sLat, sLon]).addTo(map);
-        marker.bindPopup(
-          `<b>${sName}</b><br><button onclick="getDepartures('${atcocode}')">🕒 Next Buses</button>`
-        );
-      });
-    }
+    data.member.slice(0, 4).forEach((stop) => {
+      const marker = L.marker([stop.latitude, stop.longitude]).addTo(map);
+      marker.bindPopup(
+        `<b>${stop.name}</b><br>${stop.locality || ""}<br>
+         <button onclick="getDepartures('${stop.atcocode || ""}')">🕒 Next Buses</button>`
+      );
+    });
   } catch (err) {
-    console.error("❌ Error loading nearby stops:", err);
+    console.error("❌ Nearby stops error:", err);
   }
 }
 
-// --- Fetch live departures when clicking a stop ---
+// --- Get Live Departures for a Stop ---
 async function getDepartures(atcocode) {
   if (!atcocode) return;
   responseBox.textContent = "⏳ Loading live departures...";
@@ -84,21 +91,50 @@ async function getDepartures(atcocode) {
       });
     }
     responseBox.innerHTML = html;
-    speakText(`Here are the next buses for this stop.`);
+    speakText("Here are the next buses for this stop.");
   } catch (err) {
-    console.error("❌ Error fetching departures:", err);
+    console.error("❌ Departures error:", err);
     responseBox.textContent = "Could not load bus departures.";
   }
 }
 
-// --- Handle Ask button ---
+// --- Update Live Bus Positions (real GOV.UK feed) ---
+async function updateLiveBuses(lat, lon) {
+  try {
+    const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
+    const data = await res.json();
+
+    // Clear old markers
+    busMarkers.forEach((m) => map.removeLayer(m));
+    busMarkers = [];
+
+    if (!data.buses || data.buses.length === 0) return;
+
+    data.buses.slice(0, 10).forEach((bus) => {
+      const busIcon = L.divIcon({
+        className: "live-bus",
+        html: `🚌<div class='bus-label'>${bus.line}</div>`,
+        iconSize: [25, 25],
+      });
+
+      const marker = L.marker([bus.lat, bus.lon], { icon: busIcon }).addTo(map);
+      marker.bindPopup(
+        `<b>${bus.line}</b><br>${bus.distance.toFixed(2)} km away`
+      );
+      busMarkers.push(marker);
+    });
+  } catch (err) {
+    console.warn("❌ Live bus update failed:", err);
+  }
+}
+
+// --- Ask Button ---
 askBtn.addEventListener("click", () => {
   const question = questionBox.value.trim();
-  if (!question) return;
-  getAnswer(question);
+  if (question) getAnswer(question);
 });
 
-// --- Enter key support ---
+// --- Enter key ---
 questionBox.addEventListener("keypress", (e) => {
   if (e.key === "Enter") getAnswer(questionBox.value.trim());
 });
@@ -109,6 +145,7 @@ voiceBtn.addEventListener("click", () => {
     alert("Speech recognition not supported on this browser.");
     return;
   }
+
   const recognition = new webkitSpeechRecognition();
   recognition.lang = "en-GB";
   recognition.start();
@@ -120,7 +157,7 @@ voiceBtn.addEventListener("click", () => {
   };
 });
 
-// --- Fetch AI-generated answer from backend ---
+// --- Get AI Answer ---
 async function getAnswer(question) {
   responseBox.textContent = "⏳ Thinking...";
 
@@ -131,18 +168,22 @@ async function getAnswer(question) {
       lon: userLocation.lon || "",
     });
 
-    const res = await fetch(`/api/ask?${params}`);
+    const res = await fetch(`/ask?${params}`);
     const data = await res.json();
-    responseBox.innerHTML = data.answer || "Sorry, no reply received.";
-    speakText(data.answer);
+
+    // Add small realistic delay before showing
+    setTimeout(() => {
+      responseBox.innerHTML = data.answer || "Sorry, no reply received.";
+      speakText(data.answer);
+    }, 3500);
   } catch (err) {
-    console.error("❌ Fetch Error:", err);
+    console.error("❌ AI Fetch Error:", err);
     responseBox.textContent =
       "Something went wrong — please try again in a moment.";
   }
 }
 
-// --- Text-to-Speech (Browser speech output) ---
+// --- Speech Output ---
 function speakText(text) {
   if (!text) return;
   const speech = new SpeechSynthesisUtterance(text);
@@ -153,12 +194,12 @@ function speakText(text) {
   speechSynthesis.speak(speech);
 }
 
-// --- Manual Read Aloud button ---
+// --- Manual Read Aloud ---
 speakBtn.addEventListener("click", () => {
   speakText(responseBox.textContent);
 });
 
-// --- Auto greeting on load ---
+// --- Auto Greeting ---
 window.addEventListener("load", () => {
   const greeting =
     "Welcome to Transi Autopilot Assistant. How can I help you today?";
