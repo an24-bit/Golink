@@ -15,7 +15,7 @@
     "express": "^4.19.2",
     "fs-extra": "^11.2.0",
     "googleapis": "^144.0.0",
-    "gtfs-realtime-bindings": "^0.0.7",
+   "gtfs-realtime-bindings": "^1.0.2",
     "node-fetch": "^3.3.2",
     "openai": "^4.58.0",
     "twilio": "^4.22.0"
