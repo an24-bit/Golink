@@ -3,42 +3,81 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Transi Autopilot Assistant</title>
+  <title>Transi Autopilot — Live UK Bus Assistant</title>
   <link rel="stylesheet" href="style.css" />
 
   <!-- Leaflet Map Library -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-o9N1jUuCj36Nvb+3b94A3HCGsF4xHn+ZRY2zE4y+4RA="
     crossorigin=""
   />
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9S0TjW+sR5EmK6C7XwKgh4n+nR6A0Ex+o5aU5Xqz3E="
     crossorigin=""
   ></script>
+
+  <style>
+    /* Simple pulse for LIVE indicator */
+    #live-indicator {
+      display: inline-block;
+      margin-left: 8px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: red;
+      box-shadow: 0 0 6px red;
+      animation: blink 1s infinite alternate;
+    }
+    @keyframes blink {
+      from { opacity: 0.3; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1.2); }
+    }
+  </style>
 </head>
+
 <body>
-  <h1>🚌 Transi Autopilot Assistant</h1>
+  <h1>🚌 Transi Autopilot <span id="live-indicator" title="Live data active"></span></h1>
   <p id="welcome">
-    Hi there! I’m Transi Autopilot — your live travel assistant for Plymouth & the South West.<br />
-    I can help you with buses, routes, fares, and travel updates. You can type or speak your question.
+    Hi there! I’m <b>Transi Autopilot</b> — your real-time travel assistant for Plymouth & the South West.<br>
+    I show <b>live buses</b> around you, help plan routes, and can even <b>talk back</b> with voice.
   </p>
 
   <div id="map"></div>
 
   <div class="chat-box">
-    <input id="question" type="text" placeholder="Type or say your question..." />
+    <input id="question" type="text" placeholder="Ask about buses, routes, or fares..." />
     <button id="askBtn">Ask</button>
-    <button id="voiceBtn">🎤</button>
+    <button id="voiceBtn" title="Speak your question">🎤</button>
   </div>
 
   <div id="responseBox" class="response-box">
-    Ready when you are — ask me about live buses, routes or fares!
+    Ready when you are — ask me about live buses, routes, or travel updates!
   </div>
 
   <button id="speakBtn">🔊 Read Aloud</button>
   <audio id="audioBox" controls hidden></audio>
 
   <script src="script.js"></script>
+
+  <script>
+    // 🔄 Live data indicator effect (pulses when update arrives)
+    let liveIndicator = document.getElementById("live-indicator");
+    let lastUpdate = 0;
+
+    function pulseLiveIndicator() {
+      liveIndicator.style.boxShadow = "0 0 10px lime";
+      liveIndicator.style.background = "lime";
+      setTimeout(() => {
+        liveIndicator.style.boxShadow = "0 0 6px red";
+        liveIndicator.style.background = "red";
+      }, 800);
+    }
+
+    // Expose function globally so script.js can trigger it
+    window.pulseLiveIndicator = pulseLiveIndicator;
+  </script>
 </body>
 </html>
