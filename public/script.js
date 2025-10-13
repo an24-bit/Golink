@@ -1,6 +1,6 @@
 // =====================================
-//  Transi Autopilot — Frontend v3.0
-//  AI + Voice + Live Bus Tracking
+//  Transi Autopilot — Frontend v3.1
+//  AI + Voice + Live Bus Tracking (Real-Time)
 //  Author: Ali
 // =====================================
 
@@ -13,6 +13,7 @@ const responseBox = document.getElementById("responseBox");
 let userLocation = { lat: null, lon: null };
 let map;
 let busMarkers = [];
+window.lastBusData = ""; // store previous data to detect change
 
 // --- Detect user location and load map ---
 if ("geolocation" in navigator) {
@@ -35,7 +36,7 @@ if ("geolocation" in navigator) {
 
 // --- Initialise Map (Leaflet) ---
 async function initMap(lat, lon) {
-  map = L.map("map").setView([lat, lon], 16); // zoomed in for local view
+  map = L.map("map").setView([lat, lon], 16); // local zoom
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors",
@@ -46,9 +47,6 @@ async function initMap(lat, lon) {
 
   await loadNearbyStops(lat, lon);
   await updateLiveBuses(lat, lon);
-
-  // Refresh live buses every 30 seconds
-  setInterval(() => updateLiveBuses(lat, lon), 30000);
 }
 
 // --- Load Nearby Stops ---
@@ -98,33 +96,47 @@ async function getDepartures(atcocode) {
   }
 }
 
-// --- Update Live Bus Positions (real GOV.UK feed) ---
+// --- Update Live Bus Positions (Real GOV.UK feed, Auto-refresh) ---
 async function updateLiveBuses(lat, lon) {
   try {
     const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
     const data = await res.json();
 
-    // Clear old markers
-    busMarkers.forEach((m) => map.removeLayer(m));
-    busMarkers = [];
+    const newJSON = JSON.stringify(data.buses);
+    // Only refresh if data changed (position, number, etc.)
+    if (newJSON !== window.lastBusData) {
+      window.lastBusData = newJSON;
 
-    if (!data.buses || data.buses.length === 0) return;
+      // Clear old markers
+      busMarkers.forEach((m) => map.removeLayer(m));
+      busMarkers = [];
 
-    data.buses.slice(0, 10).forEach((bus) => {
-      const busIcon = L.divIcon({
-        className: "live-bus",
-        html: `🚌<div class='bus-label'>${bus.line}</div>`,
-        iconSize: [25, 25],
-      });
+      if (data.buses && data.buses.length > 0) {
+        data.buses.slice(0, 10).forEach((bus) => {
+          const busIcon = L.divIcon({
+            className: "live-bus",
+            html: `🚌<div class='bus-label'>${bus.line}</div>`,
+            iconSize: [25, 25],
+          });
 
-      const marker = L.marker([bus.lat, bus.lon], { icon: busIcon }).addTo(map);
-      marker.bindPopup(
-        `<b>${bus.line}</b><br>${bus.distance.toFixed(2)} km away`
-      );
-      busMarkers.push(marker);
-    });
+          const marker = L.marker([bus.lat, bus.lon], { icon: busIcon }).addTo(map);
+          marker.bindPopup(`<b>${bus.line}</b><br>${bus.distance.toFixed(2)} km away`);
+          busMarkers.push(marker);
+        });
+      }
+
+      // 🔄 Pulse the LIVE indicator if defined
+      if (typeof window.pulseLiveIndicator === "function") {
+        window.pulseLiveIndicator();
+      }
+    }
+
+    // Check again in 3 seconds (faster updates)
+    setTimeout(() => updateLiveBuses(lat, lon), 3000);
   } catch (err) {
     console.warn("❌ Live bus update failed:", err);
+    // Retry after 6 seconds on error
+    setTimeout(() => updateLiveBuses(lat, lon), 6000);
   }
 }
 
