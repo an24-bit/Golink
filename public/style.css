@@ -1,5 +1,6 @@
 /* =============================
-   Transi Autopilot — Global Styles
+   Transi Autopilot — Global Styles v3.0
+   AI + Voice + Real Live Bus Tracking
    ============================= */
 
 :root {
@@ -15,6 +16,7 @@
   --font-main: system-ui, sans-serif;
 }
 
+/* --- Base --- */
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -53,12 +55,12 @@ h1 {
 
 /* --- Map --- */
 #map {
-  height: 300px;
+  height: 320px;
   width: 90%;
   max-width: 750px;
   border-radius: var(--radius);
   margin-bottom: 25px;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.45);
   overflow: hidden;
   border: 1px solid #222;
 }
@@ -88,6 +90,29 @@ h1 {
 
 .leaflet-popup-content button:hover {
   background: var(--accent-hover);
+}
+
+/* --- Live Bus Markers --- */
+.live-bus {
+  text-align: center;
+  font-size: 22px;
+  animation: busPulse 1.6s ease-in-out infinite alternate;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+.bus-label {
+  font-size: 10px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-top: 1px;
+  display: inline-block;
+}
+
+@keyframes busPulse {
+  0% { transform: translateY(0); filter: drop-shadow(0 0 3px #fff); }
+  100% { transform: translateY(-2px); filter: drop-shadow(0 0 6px #4e89ff); }
 }
 
 /* --- Chat Box --- */
@@ -156,14 +181,8 @@ h1 {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* --- Voice Buttons --- */
@@ -211,5 +230,9 @@ audio {
   }
   .response-box {
     font-size: 1rem;
+  }
+  .bus-label {
+    font-size: 9px;
+    padding: 0 3px;
   }
 }
