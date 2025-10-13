@@ -1,6 +1,6 @@
 // =====================================
 //  Transi Autopilot — Main Server
-//  Version 3.0 (AI + Voice + Live Tracking + Journeys)
+//  Version 3.1 (AI + Voice + Live Tracking + Journeys)
 //  Author: Ali
 // =====================================
 
@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import twilio from "twilio";
-import * as gtfs from "gtfs-realtime-bindings"; // for BODS live data
+import GtfsRealtimeBindings from "gtfs-realtime-bindings"; // fixed import
 
 dotenv.config();
 
@@ -27,25 +27,28 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 10000;
 
 // --- ENV keys ---
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const TRANSPORT_API_ID = process.env.TRANSPORT_API_ID;
-const TRANSPORT_API_KEY = process.env.TRANSPORT_API_KEY;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
-const TWILIO_SID = process.env.TWILIO_SID || "";
-const OPENWEATHER_KEY = process.env.OPENWEATHER_KEY || "";
-const BODS_API_KEY = process.env.BODS_API_KEY || "";
+const {
+  OPENAI_API_KEY,
+  TRANSPORT_API_ID,
+  TRANSPORT_API_KEY,
+  TWILIO_AUTH_TOKEN = "",
+  TWILIO_SID = "",
+  OPENWEATHER_KEY = "",
+  BODS_API_KEY = ""
+} = process.env;
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 // =====================================
-//   1️⃣ Nearby Stops
+//  1️⃣ Nearby Stops
 // =====================================
 app.get("/api/nearby", async (req, res) => {
   try {
     const { lat, lon } = req.query;
-    if (!lat || !lon) return res.status(400).json({ error: "Missing lat/lon" });
+    if (!lat || !lon)
+      return res.status(400).json({ error: "Missing lat/lon" });
 
-    const url = `https://transportapi.com/v3/uk/places.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&lat=${lat}&lon=${lon}&type=bus_stop,train_station&limit=20`;
+    const url = `https://transportapi.com/v3/uk/places.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&lat=${lat}&lon=${lon}&type=bus_stop&limit=15`;
     const r = await fetch(url);
     const data = await r.json();
     res.json(data);
@@ -56,7 +59,7 @@ app.get("/api/nearby", async (req, res) => {
 });
 
 // =====================================
-//   2️⃣ Live Departures
+//  2️⃣ Live Departures
 // =====================================
 app.get("/api/departures/:atcocode", async (req, res) => {
   try {
@@ -72,12 +75,13 @@ app.get("/api/departures/:atcocode", async (req, res) => {
 });
 
 // =====================================
-//   3️⃣ Journey Planning
+//  3️⃣ Journey Planning
 // =====================================
 app.get("/api/journey", async (req, res) => {
   try {
     const { from, to } = req.query;
-    if (!from || !to) return res.status(400).json({ error: "Missing from/to" });
+    if (!from || !to)
+      return res.status(400).json({ error: "Missing from/to" });
 
     const url = `https://transportapi.com/v3/uk/public/journey/from/${encodeURIComponent(
       from
@@ -88,9 +92,9 @@ app.get("/api/journey", async (req, res) => {
     const r = await fetch(url);
     const data = await r.json();
 
-    if (!data.routes || data.routes.length === 0)
+    if (!data.routes?.length)
       return res.json({
-        answer: `No public transport routes found from ${from} to ${to}.`,
+        answer: `No public transport routes found from ${from} to ${to}.`
       });
 
     const route = data.routes[0];
@@ -109,24 +113,31 @@ app.get("/api/journey", async (req, res) => {
 });
 
 // =====================================
-//   4️⃣ Real Live Buses (BODS)
+//  4️⃣ Real Live Buses (BODS feed)
 // =====================================
 app.get("/api/livebuses", async (req, res) => {
   try {
     const { lat, lon } = req.query;
-    if (!lat || !lon) return res.status(400).json({ error: "Missing lat/lon" });
+    if (!lat || !lon)
+      return res.status(400).json({ error: "Missing lat/lon" });
 
     const feedUrl = `https://data.bus-data.dft.gov.uk/api/v1/datafeed/?api_key=${BODS_API_KEY}`;
     const bodsRes = await fetch(feedUrl);
+
+    if (!bodsRes.ok)
+      throw new Error(`BODS fetch failed: ${bodsRes.status}`);
+
     const buffer = Buffer.from(await bodsRes.arrayBuffer());
-    const feed = gtfs.transit_realtime.FeedMessage.decode(buffer);
+    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(
+      buffer
+    );
 
     const buses = [];
     feed.entity.forEach((entity) => {
       if (entity.vehicle?.position) {
         const busLat = entity.vehicle.position.latitude;
         const busLon = entity.vehicle.position.longitude;
-        const label = entity.vehicle.vehicle.label || "Bus";
+        const label = entity.vehicle.vehicle?.label || "Bus";
         const bearing = entity.vehicle.position.bearing || 0;
 
         const dist = distance(lat, lon, busLat, busLon);
@@ -137,7 +148,7 @@ app.get("/api/livebuses", async (req, res) => {
             lat: busLat,
             lon: busLon,
             bearing,
-            distance: dist,
+            distance: dist
           });
         }
       }
@@ -151,7 +162,7 @@ app.get("/api/livebuses", async (req, res) => {
   }
 });
 
-// --- helper: distance (km) ---
+// --- Helper: distance (km)
 function distance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -165,7 +176,7 @@ function distance(lat1, lon1, lat2, lon2) {
 }
 
 // =====================================
-//   5️⃣ AI Assistant
+//  5️⃣ AI Assistant (GPS-Aware)
 // =====================================
 app.get("/ask", async (req, res) => {
   try {
@@ -173,28 +184,33 @@ app.get("/ask", async (req, res) => {
     if (!q) return res.status(400).json({ error: "Missing query parameter" });
 
     const context = `
-You are Transi Autopilot — a friendly UK public transport assistant.
-You help users in Plymouth and the South West find buses, routes, fares, and live buses nearby.
-If the user asks for bus tracking, use the live data from /api/livebuses.
+You are Transi Autopilot — a friendly real-time UK public transport assistant.
+You can access these endpoints:
+- /api/livebuses for nearby live buses
+- /api/departures/:stop for next bus times
+- /api/journey for planning trips
+Always use available GPS coordinates (lat:${lat}, lon:${lon}) for local info.
+If user asks about routes, find the best nearby stop and journey.
+If user asks about live buses, mention active ones within 3km.
 `;
 
     const body = {
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: context },
-        { role: "user", content: q },
+        { role: "user", content: q }
       ],
       max_tokens: 250,
-      temperature: 0.6,
+      temperature: 0.6
     };
 
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
 
     const data = await r.json();
@@ -209,7 +225,7 @@ If the user asks for bus tracking, use the live data from /api/livebuses.
 });
 
 // =====================================
-//   6️⃣ Twilio Voice Endpoint
+//  6️⃣ Twilio Voice Endpoint
 // =====================================
 app.post("/voice", async (req, res) => {
   const twiml = new VoiceResponse();
@@ -227,13 +243,13 @@ app.post("/voice", async (req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          Authorization: `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [{ role: "user", content: userSpeech }],
-          max_tokens: 200,
-        }),
+          max_tokens: 200
+        })
       });
 
       const data = await aiRes.json();
@@ -262,10 +278,10 @@ app.post("/voice", async (req, res) => {
 });
 
 // =====================================
-//   7️⃣ Health + Static
+//  7️⃣ Health + Static
 // =====================================
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", service: "Transi Autopilot", version: "3.0" });
+  res.json({ status: "ok", service: "Transi Autopilot", version: "3.1" });
 });
 
 app.get("*", (req, res) => {
@@ -273,5 +289,5 @@ app.get("*", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚍 Transi Autopilot v3.0 running on port ${PORT}`);
+  console.log(`🚍 Transi Autopilot v3.1 running on port ${PORT}`);
 });
