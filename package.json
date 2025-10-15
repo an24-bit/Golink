@@ -1,7 +1,7 @@
 {
-  "name": "transi-autopilot",
+  "name": "golink",
   "version": "3.0.0",
-  "description": "Transi Autopilot – Intelligent UK transport and travel assistant combining AI, voice, maps, live GOV.UK bus tracking, and journey planning for Plymouth & the South West.",
+  "description": "GoLink — Live UK Bus Assistant with AI, Voice, and Real-Time Tracking for Plymouth & the South West.",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -9,16 +9,13 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "fs-extra": "^11.2.0",
-    "googleapis": "^144.0.0",
-   "gtfs-realtime-bindings": "^1.0.2",
     "node-fetch": "^3.3.2",
     "openai": "^4.58.0",
-    "twilio": "^4.22.0"
+    "twilio": "^4.22.0",
+    "gtfs-realtime-bindings": "^0.0.6"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
@@ -27,23 +24,18 @@
     "node": ">=18.x"
   },
   "keywords": [
-    "transi",
-    "autopilot",
-    "ai",
-    "transport",
+    "golink",
+    "bus",
     "uk",
+    "travel",
+    "ai",
     "voice",
     "assistant",
-    "plymouth",
-    "travel",
-    "maps",
-    "openai",
-    "twilio",
     "leaflet",
     "transportapi",
-    "render",
     "bods",
-    "gtfs-realtime"
+    "render",
+    "plymouth"
   ],
   "author": "Ali",
   "license": "MIT",
@@ -52,6 +44,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/aliemkbright/transi-autopilot.git"
+    "url": "https://github.com/aliemkbright/golink.git"
   }
 }
