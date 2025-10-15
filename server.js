@@ -119,7 +119,7 @@ app.get("/api/livebuses", async (req, res) => {
     }
 
     // ✅ Correct BODS endpoint (protobuf download)
-    const feedUrl = `https://data.bus-data.dft.gov.uk/api/v1/datafeed/download?api_key=${BODS_API_KEY}`;
+    const feedUrl = `https://data.bus-data.dft.gov.uk/avl/download/${BODS_API_KEY}`;
     const bodsRes = await fetch(feedUrl);
 
     if (!bodsRes.ok) {
