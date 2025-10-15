@@ -1,6 +1,6 @@
 // =====================================
-//  Transi Autopilot — Frontend v3.1
-//  AI + Voice + Live Bus Tracking (Real-Time)
+//  GoLink — Live Bus Assistant (Frontend)
+//  Version 3.2
 //  Author: Ali
 // =====================================
 
@@ -13,7 +13,6 @@ const responseBox = document.getElementById("responseBox");
 let userLocation = { lat: null, lon: null };
 let map;
 let busMarkers = [];
-window.lastBusData = ""; // store previous data to detect change
 
 // --- Detect user location and load map ---
 if ("geolocation" in navigator) {
@@ -36,7 +35,7 @@ if ("geolocation" in navigator) {
 
 // --- Initialise Map (Leaflet) ---
 async function initMap(lat, lon) {
-  map = L.map("map").setView([lat, lon], 16); // local zoom
+  map = L.map("map").setView([lat, lon], 15);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors",
@@ -47,9 +46,12 @@ async function initMap(lat, lon) {
 
   await loadNearbyStops(lat, lon);
   await updateLiveBuses(lat, lon);
+
+  // Refresh buses dynamically (2–5 seconds when updates available)
+  setInterval(() => updateLiveBuses(lat, lon), 5000);
 }
 
-// --- Load Nearby Stops ---
+// --- Load Nearby Bus Stops ---
 async function loadNearbyStops(lat, lon) {
   try {
     const res = await fetch(`/api/nearby?lat=${lat}&lon=${lon}`);
@@ -68,7 +70,7 @@ async function loadNearbyStops(lat, lon) {
   }
 }
 
-// --- Get Live Departures for a Stop ---
+// --- Get Live Departures for Selected Stop ---
 async function getDepartures(atcocode) {
   if (!atcocode) return;
   responseBox.textContent = "⏳ Loading live departures...";
@@ -96,47 +98,37 @@ async function getDepartures(atcocode) {
   }
 }
 
-// --- Update Live Bus Positions (Real GOV.UK feed, Auto-refresh) ---
+// --- Update Live Bus Positions (from BODS feed) ---
 async function updateLiveBuses(lat, lon) {
   try {
     const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
     const data = await res.json();
 
-    const newJSON = JSON.stringify(data.buses);
-    // Only refresh if data changed (position, number, etc.)
-    if (newJSON !== window.lastBusData) {
-      window.lastBusData = newJSON;
+    // Remove old markers
+    busMarkers.forEach((m) => map.removeLayer(m));
+    busMarkers = [];
 
-      // Clear old markers
-      busMarkers.forEach((m) => map.removeLayer(m));
-      busMarkers = [];
+    if (!data.buses || data.buses.length === 0) return;
 
-      if (data.buses && data.buses.length > 0) {
-        data.buses.slice(0, 10).forEach((bus) => {
-          const busIcon = L.divIcon({
-            className: "live-bus",
-            html: `🚌<div class='bus-label'>${bus.line}</div>`,
-            iconSize: [25, 25],
-          });
+    data.buses.slice(0, 10).forEach((bus) => {
+      const busIcon = L.divIcon({
+        className: "live-bus",
+        html: `🚌<div class='bus-label'>${bus.line}</div>`,
+        iconSize: [25, 25],
+      });
 
-          const marker = L.marker([bus.lat, bus.lon], { icon: busIcon }).addTo(map);
-          marker.bindPopup(`<b>${bus.line}</b><br>${bus.distance.toFixed(2)} km away`);
-          busMarkers.push(marker);
-        });
-      }
+      const marker = L.marker([bus.lat, bus.lon], { icon: busIcon }).addTo(map);
+      marker.bindPopup(
+        `<b>${bus.line}</b><br>${bus.distance.toFixed(2)} km away`
+      );
+      busMarkers.push(marker);
+    });
 
-      // 🔄 Pulse the LIVE indicator if defined
-      if (typeof window.pulseLiveIndicator === "function") {
-        window.pulseLiveIndicator();
-      }
-    }
+    // Pulse the live indicator on new update
+    if (window.pulseLiveIndicator) window.pulseLiveIndicator();
 
-    // Check again in 3 seconds (faster updates)
-    setTimeout(() => updateLiveBuses(lat, lon), 3000);
   } catch (err) {
     console.warn("❌ Live bus update failed:", err);
-    // Retry after 6 seconds on error
-    setTimeout(() => updateLiveBuses(lat, lon), 6000);
   }
 }
 
@@ -146,7 +138,7 @@ askBtn.addEventListener("click", () => {
   if (question) getAnswer(question);
 });
 
-// --- Enter key ---
+// --- Enter Key Support ---
 questionBox.addEventListener("keypress", (e) => {
   if (e.key === "Enter") getAnswer(questionBox.value.trim());
 });
@@ -169,7 +161,7 @@ voiceBtn.addEventListener("click", () => {
   };
 });
 
-// --- Get AI Answer ---
+// --- Fetch AI-Generated Answer ---
 async function getAnswer(question) {
   responseBox.textContent = "⏳ Thinking...";
 
@@ -183,11 +175,10 @@ async function getAnswer(question) {
     const res = await fetch(`/ask?${params}`);
     const data = await res.json();
 
-    // Add small realistic delay before showing
     setTimeout(() => {
       responseBox.innerHTML = data.answer || "Sorry, no reply received.";
       speakText(data.answer);
-    }, 3500);
+    }, 3000);
   } catch (err) {
     console.error("❌ AI Fetch Error:", err);
     responseBox.textContent =
@@ -195,7 +186,7 @@ async function getAnswer(question) {
   }
 }
 
-// --- Speech Output ---
+// --- Text-to-Speech (Voice Output) ---
 function speakText(text) {
   if (!text) return;
   const speech = new SpeechSynthesisUtterance(text);
@@ -206,7 +197,7 @@ function speakText(text) {
   speechSynthesis.speak(speech);
 }
 
-// --- Manual Read Aloud ---
+// --- Manual Read-Aloud Button ---
 speakBtn.addEventListener("click", () => {
   speakText(responseBox.textContent);
 });
@@ -214,6 +205,6 @@ speakBtn.addEventListener("click", () => {
 // --- Auto Greeting ---
 window.addEventListener("load", () => {
   const greeting =
-    "Welcome to Transi Autopilot Assistant. How can I help you today?";
+    "Welcome to GoLink — your live bus assistant for Plymouth and the South West. How can I help you today?";
   speakText(greeting);
 });
