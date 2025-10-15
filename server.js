@@ -109,7 +109,7 @@ app.get("/api/journey", async (req, res) => {
 });
 
 // =====================================
-//   4️⃣ Real Live Buses (BODS)
+//   4️⃣ Real Live Buses (Public BODS)
 // =====================================
 app.get("/api/livebuses", async (req, res) => {
   try {
@@ -118,40 +118,45 @@ app.get("/api/livebuses", async (req, res) => {
       return res.status(400).json({ error: "Missing lat/lon" });
     }
 
-    // ✅ Correct AVL feed endpoint
-    const feedUrl = `https://data.bus-data.dft.gov.uk/avl/download/${BODS_API_KEY}`;
+    // ✅ Public feed (no API key required)
+    const feedUrl = "https://data.bus-data.dft.gov.uk/avl/download/";
     const bodsRes = await fetch(feedUrl);
     if (!bodsRes.ok) throw new Error(`BODS feed request failed: ${bodsRes.status}`);
 
-    const arrayBuf = await bodsRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuf);
-    const feed = gtfs.transit_realtime.FeedMessage.decode(buffer);
+    // The response is a ZIP file
+    const buffer = Buffer.from(await bodsRes.arrayBuffer());
+    const unzipper = await import("unzipper");
+    const directory = await unzipper.Open.buffer(buffer);
 
-    const buses = [];
+    // Look for VehicleActivity.json inside
+    const file = directory.files.find(f => f.path.endsWith("VehicleActivity.json"));
+    if (!file) throw new Error("No VehicleActivity.json found");
 
-    for (const entity of feed.entity) {
-      const v = entity.vehicle;
-      if (!v?.position) continue;
+    const json = JSON.parse((await file.buffer()).toString());
+    const vehicles = json.VehicleActivity || [];
 
-      const busLat = v.position.latitude;
-      const busLon = v.position.longitude;
-      const label = v.vehicle?.label || v.vehicle?.id || "Bus";
-      const bearing = v.position.bearing || 0;
+    // Filter buses within 3km of the user
+    const buses = vehicles
+      .map(v => {
+        const loc = v.MonitoredVehicleJourney?.VehicleLocation;
+        if (!loc) return null;
+        const busLat = loc.Latitude;
+        const busLon = loc.Longitude;
+        const line = v.MonitoredVehicleJourney?.LineRef || "Bus";
+        const dist = distance(lat, lon, busLat, busLon);
+        if (dist <= 3) {
+          return {
+            line,
+            lat: busLat,
+            lon: busLon,
+            distance: parseFloat(dist.toFixed(2)),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.distance - b.distance);
 
-      const dist = distance(lat, lon, busLat, busLon);
-      if (dist <= 3) {
-        buses.push({
-          id: entity.id,
-          line: label,
-          lat: busLat,
-          lon: busLon,
-          bearing,
-          distance: parseFloat(dist.toFixed(2)),
-        });
-      }
-    }
-
-    buses.sort((a, b) => a.distance - b.distance);
     res.json({ count: buses.length, buses });
   } catch (err) {
     console.error("❌ Live BODS error:", err);
