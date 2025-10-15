@@ -118,15 +118,13 @@ app.get("/api/livebuses", async (req, res) => {
       return res.status(400).json({ error: "Missing lat/lon" });
     }
 
-    // ✅ Correct BODS endpoint (protobuf download)
+    // ✅ Correct AVL feed endpoint
     const feedUrl = `https://data.bus-data.dft.gov.uk/avl/download/${BODS_API_KEY}`;
     const bodsRes = await fetch(feedUrl);
+    if (!bodsRes.ok) throw new Error(`BODS feed request failed: ${bodsRes.status}`);
 
-    if (!bodsRes.ok) {
-      throw new Error(`BODS feed request failed: ${bodsRes.status}`);
-    }
-
-    const buffer = Buffer.from(await bodsRes.arrayBuffer());
+    const arrayBuf = await bodsRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
     const feed = gtfs.transit_realtime.FeedMessage.decode(buffer);
 
     const buses = [];
@@ -137,11 +135,9 @@ app.get("/api/livebuses", async (req, res) => {
 
       const busLat = v.position.latitude;
       const busLon = v.position.longitude;
-      const label =
-        v.vehicle?.label || v.vehicle?.id || v.vehicle?.license_plate || "Bus";
+      const label = v.vehicle?.label || v.vehicle?.id || "Bus";
       const bearing = v.position.bearing || 0;
 
-      // ✅ Only include buses within 3 km
       const dist = distance(lat, lon, busLat, busLon);
       if (dist <= 3) {
         buses.push({
@@ -156,31 +152,12 @@ app.get("/api/livebuses", async (req, res) => {
     }
 
     buses.sort((a, b) => a.distance - b.distance);
-
-    res.json({
-      count: buses.length,
-      timestamp: new Date().toISOString(),
-      buses,
-    });
+    res.json({ count: buses.length, buses });
   } catch (err) {
     console.error("❌ Live BODS error:", err);
     res.status(500).json({ error: err.message || "Failed to load live buses" });
   }
 });
-
-// --- helper: distance (km) ---
-function distance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-
 // =====================================
 //   5️⃣ AI Assistant
 // =====================================
