@@ -1,6 +1,6 @@
 // =====================================
 //  GoLink — Main Server
-//  Version 3.2 (AI + Voice + Live Tracking + Journeys)
+//  Version 3.3 (AI + Voice + Live Tracking + Journeys)
 //  Author: Ali
 // =====================================
 
@@ -118,13 +118,15 @@ app.get("/api/livebuses", async (req, res) => {
       return res.status(400).json({ error: "Missing lat/lon" });
     }
 
-    // Request latest UK Department for Transport BODS data
-    const feedUrl = `https://data.bus-data.dft.gov.uk/api/v1/datafeed/?api_key=${BODS_API_KEY}`;
+    // ✅ Correct BODS endpoint (protobuf download)
+    const feedUrl = `https://data.bus-data.dft.gov.uk/api/v1/datafeed/download?api_key=${BODS_API_KEY}`;
     const bodsRes = await fetch(feedUrl);
-    if (!bodsRes.ok) throw new Error(`BODS feed request failed: ${bodsRes.status}`);
 
-    const arrayBuf = await bodsRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuf);
+    if (!bodsRes.ok) {
+      throw new Error(`BODS feed request failed: ${bodsRes.status}`);
+    }
+
+    const buffer = Buffer.from(await bodsRes.arrayBuffer());
     const feed = gtfs.transit_realtime.FeedMessage.decode(buffer);
 
     const buses = [];
@@ -135,10 +137,11 @@ app.get("/api/livebuses", async (req, res) => {
 
       const busLat = v.position.latitude;
       const busLon = v.position.longitude;
-      const label = v.vehicle?.label || v.vehicle?.id || "Bus";
+      const label =
+        v.vehicle?.label || v.vehicle?.id || v.vehicle?.license_plate || "Bus";
       const bearing = v.position.bearing || 0;
 
-      // Only include buses within 3 km of the user
+      // ✅ Only include buses within 3 km
       const dist = distance(lat, lon, busLat, busLon);
       if (dist <= 3) {
         buses.push({
@@ -152,10 +155,13 @@ app.get("/api/livebuses", async (req, res) => {
       }
     }
 
-    // Sort nearest first
     buses.sort((a, b) => a.distance - b.distance);
 
-    res.json({ count: buses.length, buses });
+    res.json({
+      count: buses.length,
+      timestamp: new Date().toISOString(),
+      buses,
+    });
   } catch (err) {
     console.error("❌ Live BODS error:", err);
     res.status(500).json({ error: err.message || "Failed to load live buses" });
@@ -164,7 +170,7 @@ app.get("/api/livebuses", async (req, res) => {
 
 // --- helper: distance (km) ---
 function distance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -180,7 +186,7 @@ function distance(lat1, lon1, lat2, lon2) {
 // =====================================
 app.get("/ask", async (req, res) => {
   try {
-    const { q, lat, lon } = req.query;
+    const { q } = req.query;
     if (!q) return res.status(400).json({ error: "Missing query parameter" });
 
     const context = `
@@ -276,7 +282,7 @@ app.post("/voice", async (req, res) => {
 //   7️⃣ Health + Static
 // =====================================
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", service: "GoLink", version: "3.2" });
+  res.json({ status: "ok", service: "GoLink", version: "3.3" });
 });
 
 app.get("*", (req, res) => {
@@ -284,5 +290,5 @@ app.get("*", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🛰️  GoLink v3.2 is live on port ${PORT}`);
+  console.log(`🛰️  GoLink v3.3 is live on port ${PORT}`);
 });
