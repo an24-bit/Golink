@@ -114,46 +114,57 @@ app.get("/api/journey", async (req, res) => {
 app.get("/api/livebuses", async (req, res) => {
   try {
     const { lat, lon } = req.query;
-    if (!lat || !lon) return res.status(400).json({ error: "Missing lat/lon" });
+    if (!lat || !lon) {
+      return res.status(400).json({ error: "Missing lat/lon" });
+    }
 
+    // Request latest UK Department for Transport BODS data
     const feedUrl = `https://data.bus-data.dft.gov.uk/api/v1/datafeed/?api_key=${BODS_API_KEY}`;
     const bodsRes = await fetch(feedUrl);
-    const buffer = Buffer.from(await bodsRes.arrayBuffer());
+    if (!bodsRes.ok) throw new Error(`BODS feed request failed: ${bodsRes.status}`);
+
+    const arrayBuf = await bodsRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
     const feed = gtfs.transit_realtime.FeedMessage.decode(buffer);
 
     const buses = [];
-    feed.entity.forEach((entity) => {
-      if (entity.vehicle?.position) {
-        const busLat = entity.vehicle.position.latitude;
-        const busLon = entity.vehicle.position.longitude;
-        const label = entity.vehicle.vehicle.label || "Bus";
-        const bearing = entity.vehicle.position.bearing || 0;
 
-        const dist = distance(lat, lon, busLat, busLon);
-        if (dist <= 3) {
-          buses.push({
-            id: entity.id,
-            line: label,
-            lat: busLat,
-            lon: busLon,
-            bearing,
-            distance: dist,
-          });
-        }
+    for (const entity of feed.entity) {
+      const v = entity.vehicle;
+      if (!v?.position) continue;
+
+      const busLat = v.position.latitude;
+      const busLon = v.position.longitude;
+      const label = v.vehicle?.label || v.vehicle?.id || "Bus";
+      const bearing = v.position.bearing || 0;
+
+      // Only include buses within 3 km of the user
+      const dist = distance(lat, lon, busLat, busLon);
+      if (dist <= 3) {
+        buses.push({
+          id: entity.id,
+          line: label,
+          lat: busLat,
+          lon: busLon,
+          bearing,
+          distance: parseFloat(dist.toFixed(2)),
+        });
       }
-    });
+    }
 
+    // Sort nearest first
     buses.sort((a, b) => a.distance - b.distance);
+
     res.json({ count: buses.length, buses });
   } catch (err) {
     console.error("❌ Live BODS error:", err);
-    res.status(500).json({ error: "Failed to load live buses" });
+    res.status(500).json({ error: err.message || "Failed to load live buses" });
   }
 });
 
 // --- helper: distance (km) ---
 function distance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
+  const R = 6371; // Earth radius in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
