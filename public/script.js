@@ -1,6 +1,6 @@
 // =====================================
 //  GoLink — Live Bus Assistant (Refined)
-//  Version 3.3
+//  Version 3.4
 //  Author: Ali
 // =====================================
 
@@ -12,7 +12,7 @@ const responseBox = document.getElementById("responseBox");
 
 let userLocation = { lat: null, lon: null };
 let map;
-let busMarkers = [];
+let busMarkers = {};
 let nearbyStops = [];
 
 // --- Detect user location and initialise map ---
@@ -26,7 +26,7 @@ if ("geolocation" in navigator) {
     },
     (err) => {
       console.warn("⚠️ Geolocation denied:", err.message);
-      // fallback to Plymouth centre
+      // fallback: Plymouth city centre
       userLocation.lat = 50.3755;
       userLocation.lon = -4.1427;
       initMap(userLocation.lat, userLocation.lon);
@@ -40,7 +40,7 @@ if ("geolocation" in navigator) {
   initMap(userLocation.lat, userLocation.lon);
 }
 
-// --- Initialise map with Leaflet ---
+// --- Initialise map ---
 async function initMap(lat, lon) {
   map = L.map("map").setView([lat, lon], 15);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -48,19 +48,15 @@ async function initMap(lat, lon) {
     attribution: "© OpenStreetMap contributors",
   }).addTo(map);
 
-  // user marker
   const marker = L.marker([lat, lon]).addTo(map);
   marker.bindPopup("📍 You are here").openPopup();
 
-  // fetch stops and buses
   await loadNearbyStops(lat, lon);
   await updateLiveBuses(lat, lon);
-
-  // schedule periodic updates
   setInterval(() => updateLiveBuses(lat, lon), 5000);
 }
 
-// --- Fetch and display nearby stops ---
+// --- Load nearby bus stops ---
 async function loadNearbyStops(lat, lon) {
   try {
     const res = await fetch(`/api/nearby?lat=${lat}&lon=${lon}`);
@@ -68,75 +64,83 @@ async function loadNearbyStops(lat, lon) {
     if (!data.member) return;
 
     nearbyStops = data.member;
-
-    nearbyStops.slice(0, 5).forEach((stop) => {
+    nearbyStops.slice(0, 10).forEach((stop) => {
+      if (!stop.atcocode) return;
       const m = L.marker([stop.latitude, stop.longitude]).addTo(map);
-      m.bindPopup(
-        `<strong>${stop.name}</strong><br>${stop.locality || ""}<br>
-        <button onclick="getDepartures('${stop.atcocode}')">🕒 Next Buses</button>`
-      );
+      m.bindPopup(`
+        <strong>${stop.name}</strong><br>${stop.locality || ""}<br>
+        <button onclick="getDepartures('${stop.atcocode}','${stop.name}')">🕒 Next Buses</button>
+      `);
     });
   } catch (err) {
     console.error("❌ loadNearbyStops error:", err);
   }
 }
 
-// --- Get live departures for a stop ---
-async function getDepartures(atcocode) {
-  if (!atcocode) {
-    responseBox.textContent = "No stop code provided.";
-    return;
-  }
-  responseBox.textContent = "⏳ Loading departures...";
+// --- Show departures for a stop ---
+async function getDepartures(atcocode, stopName = "") {
+  if (!atcocode) return (responseBox.textContent = "No stop code provided.");
+  responseBox.innerHTML = "⏳ Loading departures...";
+
   try {
     const res = await fetch(`/api/departures/${atcocode}`);
     const data = await res.json();
 
     if (!data.departures) {
-      responseBox.textContent = "No live data for this stop.";
+      responseBox.innerHTML = `🚏 No live data for ${stopName || "this stop"}.`;
       return;
     }
 
-    let html = `🚏 <strong>Next buses:</strong><br>`;
+    let html = `<h3>🚏 ${stopName}</h3><b>Next buses:</b><br>`;
     for (const route in data.departures) {
-      data.departures[route].forEach((bus) => {
-        html += `${bus.line_name} → ${bus.direction} — ${bus.expected_departure_time}<br>`;
-      });
+      const next = data.departures[route].slice(0, 3);
+      html += `<b>${route}</b>: ${next
+        .map((b) => `${b.expected_departure_time} → ${b.direction}`)
+        .join("<br>")}<br><br>`;
     }
+
     responseBox.innerHTML = html;
-    speakText("Here are the next buses at that stop.");
+    speakText(`Here are the next buses from ${stopName}.`);
   } catch (err) {
     console.error("❌ getDepartures error:", err);
-    responseBox.textContent = "Could not fetch departures.";
+    responseBox.textContent = "Could not fetch live departures.";
   }
 }
 
-// --- Fetch and plot live buses ---
+// --- Fetch and update live buses (smoothly) ---
 async function updateLiveBuses(lat, lon) {
   try {
     const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
     const data = await res.json();
+    if (!data.buses) return;
 
-    // remove old markers
-    busMarkers.forEach((m) => map.removeLayer(m));
-    busMarkers = [];
+    const seen = new Set();
 
-    if (!data.buses || data.buses.length === 0) {
-      // nothing to show
-      return;
-    }
+    data.buses.slice(0, 20).forEach((bus) => {
+      seen.add(bus.id);
 
-    data.buses.slice(0, 10).forEach((bus) => {
       const icon = L.divIcon({
-        className: "live-bus",
-        html: `🚌<div class="bus-label">${bus.line}</div>`,
-        iconSize: [25, 25],
+        className: "bus-icon",
+        html: `<div style="transform: rotate(${bus.bearing}deg); font-size:18px;">🚌</div>`,
+        iconSize: [24, 24],
       });
-      const m = L.marker([bus.lat, bus.lon], { icon }).addTo(map);
-      m.bindPopup(
-        `<strong>${bus.line}</strong><br>${bus.distance.toFixed(2)} km away`
-      );
-      busMarkers.push(m);
+
+      if (busMarkers[bus.id]) {
+        busMarkers[bus.id].setLatLng([bus.lat, bus.lon]);
+      } else {
+        const marker = L.marker([bus.lat, bus.lon], { icon })
+          .addTo(map)
+          .bindPopup(`<b>${bus.line}</b><br>${bus.distance.toFixed(2)} km away`);
+        busMarkers[bus.id] = marker;
+      }
+    });
+
+    // remove buses no longer visible
+    Object.keys(busMarkers).forEach((id) => {
+      if (!seen.has(id)) {
+        map.removeLayer(busMarkers[id]);
+        delete busMarkers[id];
+      }
     });
 
     if (window.pulseLiveIndicator) window.pulseLiveIndicator();
@@ -145,9 +149,9 @@ async function updateLiveBuses(lat, lon) {
   }
 }
 
-// --- Ask (AI) request ---
+// --- AI assistant query ---
 async function getAnswer(question) {
-  responseBox.textContent = "⏳ Thinking…";
+  responseBox.innerHTML = "⏳ Thinking...";
   try {
     const params = new URLSearchParams({
       q: question,
@@ -156,18 +160,17 @@ async function getAnswer(question) {
     });
     const res = await fetch(`/ask?${params.toString()}`);
     const data = await res.json();
-    setTimeout(() => {
-      responseBox.innerHTML = data.answer || "No reply.";
-      speakText(data.answer);
-    }, 2000);
+
+    const answer = data.answer || "No reply available right now.";
+    responseBox.innerHTML = `<b>💬 Answer:</b> ${answer}`;
+    speakText(answer);
   } catch (err) {
     console.error("❌ getAnswer error:", err);
-    responseBox.textContent =
-      "Something went wrong. Please try again.";
+    responseBox.textContent = "Error contacting assistant.";
   }
 }
 
-// --- Button events ---
+// --- Button and voice input ---
 askBtn.addEventListener("click", () => {
   const q = questionBox.value.trim();
   if (q) getAnswer(q);
@@ -177,36 +180,34 @@ questionBox.addEventListener("keypress", (e) => {
 });
 voiceBtn.addEventListener("click", () => {
   if (!("webkitSpeechRecognition" in window)) {
-    alert("Speech recognition not supported.");
+    alert("Speech recognition not supported on this browser.");
     return;
   }
-  const recognition = new webkitSpeechRecognition();
-  recognition.lang = "en-GB";
-  recognition.start();
-  recognition.onresult = (ev) => {
-    const t = ev.results[0][0].transcript;
-    questionBox.value = t;
-    getAnswer(t);
+  const rec = new webkitSpeechRecognition();
+  rec.lang = "en-GB";
+  rec.start();
+  rec.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    questionBox.value = text;
+    getAnswer(text);
   };
-});
-speakBtn.addEventListener("click", () => {
-  speakText(responseBox.textContent);
 });
 
 // --- Speech output ---
+speakBtn.addEventListener("click", () => speakText(responseBox.textContent));
 function speakText(text) {
   if (!text) return;
-  const speech = new SpeechSynthesisUtterance(text);
-  speech.lang = "en-GB";
-  speech.rate = 1;
-  speech.pitch = 1;
+  const msg = new SpeechSynthesisUtterance(text);
+  msg.lang = "en-GB";
+  msg.rate = 1;
+  msg.pitch = 1;
   speechSynthesis.cancel();
-  speechSynthesis.speak(speech);
+  speechSynthesis.speak(msg);
 }
 
-// --- Auto Greeting ---
+// --- Auto greeting ---
 window.addEventListener("load", () => {
-  const greeting =
-    "Welcome to GoLink — your live bus assistant for Plymouth and beyond. Ask me anything about your bus.";
-  speakText(greeting);
+  const greet =
+    "Welcome to GoLink — your live bus and travel assistant. I can show live buses near you or help you plan your route.";
+  speakText(greet);
 });
