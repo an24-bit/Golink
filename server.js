@@ -117,16 +117,17 @@ app.get("/api/livebuses", async (req, res) => {
     if (!lat || !lon)
       return res.status(400).json({ error: "Missing lat/lon" });
 
-    const url = `https://transportapi.com/v3/uk/bus/stops/near.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&lat=${lat}&lon=${lon}&group=route&limit=20`;
-    const stopsRes = await fetch(url);
+    const stopsUrl = `https://transportapi.com/v3/uk/bus/stops/near.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&lat=${lat}&lon=${lon}&group=route&limit=10`;
+    const stopsRes = await fetch(stopsUrl);
     const stopsData = await stopsRes.json();
 
-    if (!stopsData.stops) return res.json({ count: 0, buses: [] });
+    if (!stopsData.stops || stopsData.stops.length === 0) {
+      return res.json({ count: 0, buses: [] });
+    }
 
-    // For each stop, get live buses
     const buses = [];
     for (const stop of stopsData.stops.slice(0, 5)) {
-      const depUrl = `https://transportapi.com/v3/uk/bus/stop/${stop.atcocode}/live.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&group=route&limit=2&nextbuses=yes`;
+      const depUrl = `https://transportapi.com/v3/uk/bus/stop/${stop.atcocode}/live.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&group=route&limit=3&nextbuses=yes`;
       const depRes = await fetch(depUrl);
       const depData = await depRes.json();
       if (depData.departures) {
