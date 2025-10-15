@@ -1,6 +1,5 @@
 // =====================================
-//  GoLink — Live Bus Assistant (Refined)
-//  Version 3.4
+//  GoLink — Live Bus Assistant (Fixed + Refined v3.5)
 //  Author: Ali
 // =====================================
 
@@ -15,68 +14,95 @@ let map;
 let busMarkers = {};
 let nearbyStops = [];
 
-// --- Detect user location and initialise map ---
-if ("geolocation" in navigator) {
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      userLocation.lat = pos.coords.latitude.toFixed(6);
-      userLocation.lon = pos.coords.longitude.toFixed(6);
-      console.log("📍 Location:", userLocation);
-      initMap(userLocation.lat, userLocation.lon);
-    },
-    (err) => {
-      console.warn("⚠️ Geolocation denied:", err.message);
-      // fallback: Plymouth city centre
-      userLocation.lat = 50.3755;
-      userLocation.lon = -4.1427;
-      initMap(userLocation.lat, userLocation.lon);
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-  );
-} else {
-  console.warn("❌ Geolocation unsupported");
-  userLocation.lat = 50.3755;
-  userLocation.lon = -4.1427;
-  initMap(userLocation.lat, userLocation.lon);
-}
+// --- Wait until page fully loads ---
+window.addEventListener("load", () => {
+  console.log("✅ Page loaded, starting geolocation...");
 
-// --- Initialise map with glowing user marker ---
+  if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userLocation.lat = pos.coords.latitude.toFixed(6);
+        userLocation.lon = pos.coords.longitude.toFixed(6);
+        console.log("📍 Location found:", userLocation);
+        initMap(userLocation.lat, userLocation.lon);
+      },
+      (err) => {
+        console.warn("⚠️ Geolocation denied:", err.message);
+        // fallback to Plymouth city centre
+        userLocation.lat = 50.3755;
+        userLocation.lon = -4.1427;
+        initMap(userLocation.lat, userLocation.lon);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  } else {
+    console.warn("❌ Geolocation not supported");
+    userLocation.lat = 50.3755;
+    userLocation.lon = -4.1427;
+    initMap(userLocation.lat, userLocation.lon);
+  }
+
+  // Greet user with voice
+  const greet =
+    "Welcome to GoLink — your live bus and travel assistant. I can show nearby stops, timetables, and live buses.";
+  speakText(greet);
+});
+
+// --- Initialise map (with user marker and auto-updates) ---
 async function initMap(lat, lon) {
+  console.log("🗺️ Initialising map...");
+
+  const mapContainer = document.getElementById("map");
+  if (!mapContainer) {
+    console.error("❌ Map container not found.");
+    return;
+  }
+
+  // Create map
   map = L.map("map").setView([lat, lon], 15);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors",
   }).addTo(map);
 
-  // glowing blue "you are here" marker
+  // glowing "You are here" marker
   const userIcon = L.divIcon({
     className: "user-marker",
-    html: '<div style="width:18px;height:18px;border-radius:50%;background:#00ffcc;border:3px solid #fff;box-shadow:0 0 10px #00ffcc;"></div>',
+    html: '<div style="width:18px;height:18px;border-radius:50%;background:#00ffcc;border:3px solid #fff;box-shadow:0 0 12px #00ffcc;"></div>',
     iconSize: [18, 18],
-    iconAnchor: [9, 9]
+    iconAnchor: [9, 9],
   });
   const marker = L.marker([lat, lon], { icon: userIcon }).addTo(map);
   marker.bindPopup("📍 You are here").openPopup();
 
+  // Load nearby stops and live buses
   await loadNearbyStops(lat, lon);
   await updateLiveBuses(lat, lon);
   setInterval(() => updateLiveBuses(lat, lon), 30000);
 }
 
-// --- Load nearby stops ---
+// --- Load nearby bus stops ---
 async function loadNearbyStops(lat, lon) {
   try {
+    console.log("🚌 Fetching nearby stops...");
     const res = await fetch(`/api/nearby?lat=${lat}&lon=${lon}`);
     const data = await res.json();
-    if (!data.member) return;
+
+    if (!data.member) {
+      console.warn("⚠️ No nearby stops found");
+      return;
+    }
 
     nearbyStops = data.member;
     nearbyStops.slice(0, 10).forEach((stop) => {
       if (!stop.atcocode) return;
+
       const m = L.marker([stop.latitude, stop.longitude]).addTo(map);
       m.bindPopup(`
         <strong>${stop.name}</strong><br>${stop.locality || ""}<br>
-        <button style="margin-top:5px;padding:5px 10px;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;" onclick="getDepartures('${stop.atcocode}','${stop.name}')">Next Buses</button>
+        <button style="margin-top:5px;padding:5px 10px;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;" onclick="getDepartures('${stop.atcocode}','${stop.name}')">
+          🕒 Next Buses
+        </button>
       `);
     });
   } catch (err) {
@@ -84,12 +110,17 @@ async function loadNearbyStops(lat, lon) {
   }
 }
 
-// --- Show departures (with clean timetable cards) ---
+// --- Fetch and display timetable for a stop ---
 async function getDepartures(atcocode, stopName = "") {
-  if (!atcocode) return (responseBox.textContent = "No stop code provided.");
+  if (!atcocode) {
+    responseBox.textContent = "No stop code provided.";
+    return;
+  }
+
   responseBox.innerHTML = `<div class="loading">⏳ Fetching next buses...</div>`;
 
   try {
+    console.log("📅 Getting departures for", stopName);
     const res = await fetch(`/api/departures/${atcocode}`);
     const data = await res.json();
 
@@ -100,6 +131,7 @@ async function getDepartures(atcocode, stopName = "") {
 
     let html = `<h3>🚏 ${stopName}</h3>`;
     html += `<ul class="departure-list">`;
+
     for (const route in data.departures) {
       data.departures[route].slice(0, 3).forEach((bus) => {
         html += `
@@ -110,9 +142,9 @@ async function getDepartures(atcocode, stopName = "") {
           </li>`;
       });
     }
+
     html += `</ul>`;
     responseBox.innerHTML = html;
-
     speakText(`Here are the next buses from ${stopName}.`);
   } catch (err) {
     console.error("❌ getDepartures error:", err);
@@ -120,7 +152,7 @@ async function getDepartures(atcocode, stopName = "") {
   }
 }
 
-// --- Live bus tracking placeholder (kept for future) ---
+// --- Update live bus positions (every 30s) ---
 async function updateLiveBuses(lat, lon) {
   try {
     const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
@@ -155,12 +187,14 @@ async function updateLiveBuses(lat, lon) {
         delete busMarkers[id];
       }
     });
+
+    if (window.pulseLiveIndicator) window.pulseLiveIndicator();
   } catch (err) {
     console.warn("❌ updateLiveBuses error:", err);
   }
 }
 
-// --- AI assistant query ---
+// --- AI question handler ---
 async function getAnswer(question) {
   responseBox.innerHTML = "⏳ Thinking...";
   try {
@@ -181,14 +215,16 @@ async function getAnswer(question) {
   }
 }
 
-// --- Buttons and speech recognition ---
+// --- UI Button Controls ---
 askBtn.addEventListener("click", () => {
   const q = questionBox.value.trim();
   if (q) getAnswer(q);
 });
+
 questionBox.addEventListener("keypress", (e) => {
   if (e.key === "Enter") getAnswer(questionBox.value.trim());
 });
+
 voiceBtn.addEventListener("click", () => {
   if (!("webkitSpeechRecognition" in window)) {
     alert("Speech recognition not supported on this browser.");
@@ -203,9 +239,10 @@ voiceBtn.addEventListener("click", () => {
     getAnswer(text);
   };
 });
+
 speakBtn.addEventListener("click", () => speakText(responseBox.textContent));
 
-// --- Speech synthesis ---
+// --- Voice output ---
 function speakText(text) {
   if (!text) return;
   const msg = new SpeechSynthesisUtterance(text);
@@ -215,10 +252,3 @@ function speakText(text) {
   speechSynthesis.cancel();
   speechSynthesis.speak(msg);
 }
-
-// --- Auto greeting ---
-window.addEventListener("load", () => {
-  const greet =
-    "Welcome to GoLink — your live bus and travel assistant. I can show live buses near you or help plan your route.";
-  speakText(greet);
-});
