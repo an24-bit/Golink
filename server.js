@@ -109,58 +109,46 @@ app.get("/api/journey", async (req, res) => {
 });
 
 // =====================================
-//   4️⃣ Real Live Buses (Public BODS)
+//   4️⃣ Live Buses (TransportAPI fallback)
 // =====================================
 app.get("/api/livebuses", async (req, res) => {
   try {
     const { lat, lon } = req.query;
-    if (!lat || !lon) {
+    if (!lat || !lon)
       return res.status(400).json({ error: "Missing lat/lon" });
-    }
 
-    // ✅ Public feed (no API key required)
-    const feedUrl = "https://data.bus-data.dft.gov.uk/avl/download/";
-    const bodsRes = await fetch(feedUrl);
-    if (!bodsRes.ok) throw new Error(`BODS feed request failed: ${bodsRes.status}`);
+    const url = `https://transportapi.com/v3/uk/bus/stops/near.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&lat=${lat}&lon=${lon}&group=route&limit=20`;
+    const stopsRes = await fetch(url);
+    const stopsData = await stopsRes.json();
 
-    // The response is a ZIP file
-    const buffer = Buffer.from(await bodsRes.arrayBuffer());
-    const unzipper = await import("unzipper");
-    const directory = await unzipper.Open.buffer(buffer);
+    if (!stopsData.stops) return res.json({ count: 0, buses: [] });
 
-    // Look for VehicleActivity.json inside
-    const file = directory.files.find(f => f.path.endsWith("VehicleActivity.json"));
-    if (!file) throw new Error("No VehicleActivity.json found");
-
-    const json = JSON.parse((await file.buffer()).toString());
-    const vehicles = json.VehicleActivity || [];
-
-    // Filter buses within 3km of the user
-    const buses = vehicles
-      .map(v => {
-        const loc = v.MonitoredVehicleJourney?.VehicleLocation;
-        if (!loc) return null;
-        const busLat = loc.Latitude;
-        const busLon = loc.Longitude;
-        const line = v.MonitoredVehicleJourney?.LineRef || "Bus";
-        const dist = distance(lat, lon, busLat, busLon);
-        if (dist <= 3) {
-          return {
-            line,
-            lat: busLat,
-            lon: busLon,
-            distance: parseFloat(dist.toFixed(2)),
-          };
+    // For each stop, get live buses
+    const buses = [];
+    for (const stop of stopsData.stops.slice(0, 5)) {
+      const depUrl = `https://transportapi.com/v3/uk/bus/stop/${stop.atcocode}/live.json?app_id=${TRANSPORT_API_ID}&app_key=${TRANSPORT_API_KEY}&group=route&limit=2&nextbuses=yes`;
+      const depRes = await fetch(depUrl);
+      const depData = await depRes.json();
+      if (depData.departures) {
+        for (const route in depData.departures) {
+          depData.departures[route].forEach((bus) => {
+            buses.push({
+              stop: stop.name,
+              line: bus.line_name,
+              direction: bus.direction,
+              expected: bus.expected_departure_time,
+              lat: stop.latitude,
+              lon: stop.longitude,
+            });
+          });
         }
-        return null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.distance - b.distance);
+      }
+    }
 
     res.json({ count: buses.length, buses });
   } catch (err) {
-    console.error("❌ Live BODS error:", err);
-    res.status(500).json({ error: err.message || "Failed to load live buses" });
+    console.error("❌ Live buses error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 // =====================================
