@@ -40,7 +40,7 @@ if ("geolocation" in navigator) {
   initMap(userLocation.lat, userLocation.lon);
 }
 
-// --- Initialise map ---
+// --- Initialise map with glowing user marker ---
 async function initMap(lat, lon) {
   map = L.map("map").setView([lat, lon], 15);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -48,15 +48,22 @@ async function initMap(lat, lon) {
     attribution: "© OpenStreetMap contributors",
   }).addTo(map);
 
-  const marker = L.marker([lat, lon]).addTo(map);
+  // glowing blue "you are here" marker
+  const userIcon = L.divIcon({
+    className: "user-marker",
+    html: '<div style="width:18px;height:18px;border-radius:50%;background:#00ffcc;border:3px solid #fff;box-shadow:0 0 10px #00ffcc;"></div>',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
+  });
+  const marker = L.marker([lat, lon], { icon: userIcon }).addTo(map);
   marker.bindPopup("📍 You are here").openPopup();
 
   await loadNearbyStops(lat, lon);
   await updateLiveBuses(lat, lon);
-  setInterval(() => updateLiveBuses(lat, lon), 5000);
+  setInterval(() => updateLiveBuses(lat, lon), 30000);
 }
 
-// --- Load nearby bus stops ---
+// --- Load nearby stops ---
 async function loadNearbyStops(lat, lon) {
   try {
     const res = await fetch(`/api/nearby?lat=${lat}&lon=${lon}`);
@@ -69,7 +76,7 @@ async function loadNearbyStops(lat, lon) {
       const m = L.marker([stop.latitude, stop.longitude]).addTo(map);
       m.bindPopup(`
         <strong>${stop.name}</strong><br>${stop.locality || ""}<br>
-        <button onclick="getDepartures('${stop.atcocode}','${stop.name}')">🕒 Next Buses</button>
+        <button style="margin-top:5px;padding:5px 10px;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;" onclick="getDepartures('${stop.atcocode}','${stop.name}')">Next Buses</button>
       `);
     });
   } catch (err) {
@@ -77,29 +84,35 @@ async function loadNearbyStops(lat, lon) {
   }
 }
 
-// --- Show departures for a stop ---
+// --- Show departures (with clean timetable cards) ---
 async function getDepartures(atcocode, stopName = "") {
   if (!atcocode) return (responseBox.textContent = "No stop code provided.");
-  responseBox.innerHTML = "⏳ Loading departures...";
+  responseBox.innerHTML = `<div class="loading">⏳ Fetching next buses...</div>`;
 
   try {
     const res = await fetch(`/api/departures/${atcocode}`);
     const data = await res.json();
 
     if (!data.departures) {
-      responseBox.innerHTML = `🚏 No live data for ${stopName || "this stop"}.`;
+      responseBox.innerHTML = `<p>No live data for ${stopName || "this stop"}.</p>`;
       return;
     }
 
-    let html = `<h3>🚏 ${stopName}</h3><b>Next buses:</b><br>`;
+    let html = `<h3>🚏 ${stopName}</h3>`;
+    html += `<ul class="departure-list">`;
     for (const route in data.departures) {
-      const next = data.departures[route].slice(0, 3);
-      html += `<b>${route}</b>: ${next
-        .map((b) => `${b.expected_departure_time} → ${b.direction}`)
-        .join("<br>")}<br><br>`;
+      data.departures[route].slice(0, 3).forEach((bus) => {
+        html += `
+          <li>
+            <span class="line">${bus.line_name}</span>
+            <span class="dir">${bus.direction}</span>
+            <span class="time">${bus.expected_departure_time}</span>
+          </li>`;
+      });
     }
-
+    html += `</ul>`;
     responseBox.innerHTML = html;
+
     speakText(`Here are the next buses from ${stopName}.`);
   } catch (err) {
     console.error("❌ getDepartures error:", err);
@@ -107,7 +120,7 @@ async function getDepartures(atcocode, stopName = "") {
   }
 }
 
-// --- Fetch and update live buses (smoothly) ---
+// --- Live bus tracking placeholder (kept for future) ---
 async function updateLiveBuses(lat, lon) {
   try {
     const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
@@ -135,15 +148,13 @@ async function updateLiveBuses(lat, lon) {
       }
     });
 
-    // remove buses no longer visible
+    // remove buses that disappeared
     Object.keys(busMarkers).forEach((id) => {
       if (!seen.has(id)) {
         map.removeLayer(busMarkers[id]);
         delete busMarkers[id];
       }
     });
-
-    if (window.pulseLiveIndicator) window.pulseLiveIndicator();
   } catch (err) {
     console.warn("❌ updateLiveBuses error:", err);
   }
@@ -170,7 +181,7 @@ async function getAnswer(question) {
   }
 }
 
-// --- Button and voice input ---
+// --- Buttons and speech recognition ---
 askBtn.addEventListener("click", () => {
   const q = questionBox.value.trim();
   if (q) getAnswer(q);
@@ -192,9 +203,9 @@ voiceBtn.addEventListener("click", () => {
     getAnswer(text);
   };
 });
-
-// --- Speech output ---
 speakBtn.addEventListener("click", () => speakText(responseBox.textContent));
+
+// --- Speech synthesis ---
 function speakText(text) {
   if (!text) return;
   const msg = new SpeechSynthesisUtterance(text);
@@ -208,6 +219,6 @@ function speakText(text) {
 // --- Auto greeting ---
 window.addEventListener("load", () => {
   const greet =
-    "Welcome to GoLink — your live bus and travel assistant. I can show live buses near you or help you plan your route.";
+    "Welcome to GoLink — your live bus and travel assistant. I can show live buses near you or help plan your route.";
   speakText(greet);
 });
