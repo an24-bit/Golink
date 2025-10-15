@@ -4,16 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GoLink — Live UK Bus Assistant</title>
+
+  <!-- ✅ Correct CSS link -->
   <link rel="stylesheet" href="style.css" />
 
- <!-- Leaflet Map -->
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
-</script>
+  <!-- ✅ Leaflet Map (secure version) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha512-o9N1j1gVmk9GTT+mt1epZzK3oX+3LbFkP5rBo+rk/w7I2k5nlRdbXTAW1xTn6yDybOYNlFuf7+jVq4GS3l/k9A=="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha512-vsH8GpFQf4bXAFdA0mW4KwYcFS2fKe9X+pnQ2AgY2lXyH+qEh/7/ff6Q2YHdA5svQr7F9yH+Mk6G3Rj5UQ5WQw=="
+    crossorigin=""
+  ></script>
 
   <style>
     /* Simple pulse for LIVE indicator */
@@ -26,6 +32,7 @@
       background: red;
       box-shadow: 0 0 6px red;
       animation: blink 1s infinite alternate;
+      vertical-align: middle;
     }
     @keyframes blink {
       from { opacity: 0.3; transform: scale(0.9); }
@@ -36,19 +43,27 @@
 
 <body>
   <h1>🚌 GoLink <span id="live-indicator" title="Live data active"></span></h1>
+
   <p id="welcome">
-    Hi there! I’m <b>GoLink</b> — your real-time travel assistant for Plymouth & the South West.<br>
+    Hi there! I’m <b>GoLink</b> — your real-time travel assistant for Plymouth &amp; the South West.<br>
     I show <b>live buses</b> around you, help plan routes, and tell you when the next one’s due.
   </p>
 
+  <!-- Map -->
   <div id="map"></div>
 
+  <!-- Chat input -->
   <div class="chat-box">
-    <input id="question" type="text" placeholder="Ask about routes, next buses, or stops..." />
+    <input
+      id="question"
+      type="text"
+      placeholder="Ask about routes, next buses, or stops..."
+    />
     <button id="askBtn">Ask</button>
     <button id="voiceBtn" title="Speak your question">🎤</button>
   </div>
 
+  <!-- Response panel -->
   <div id="responseBox" class="response-box">
     Ready when you are — ask me about live buses or routes nearby!
   </div>
@@ -56,12 +71,12 @@
   <button id="speakBtn">🔊 Read Aloud</button>
   <audio id="audioBox" controls hidden></audio>
 
-  <script src="script.js"></script>
+  <!-- ✅ Main JS -->
+  <script src="main.js"></script>
 
+  <!-- ✅ Live indicator pulse logic -->
   <script>
-    // 🔄 Live data indicator pulse when updates arrive
-    let liveIndicator = document.getElementById("live-indicator");
-
+    const liveIndicator = document.getElementById("live-indicator");
     function pulseLiveIndicator() {
       liveIndicator.style.boxShadow = "0 0 10px lime";
       liveIndicator.style.background = "lime";
@@ -70,7 +85,6 @@
         liveIndicator.style.background = "red";
       }, 800);
     }
-
     window.pulseLiveIndicator = pulseLiveIndicator;
   </script>
 </body>
