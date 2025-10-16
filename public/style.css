@@ -1,5 +1,5 @@
 /* =============================
-   GoLink — Global Styles (Bus Edition v3.5)
+   GoLink — Global Styles (Bus Edition v3.8)
    ============================= */
 
 :root {
@@ -207,20 +207,6 @@ audio {
   margin-top: 2px;
 }
 
-/* --- You Are Here marker --- */
-.user-marker div {
-  animation: glow 1.8s infinite alternate;
-}
-
-@keyframes glow {
-  from {
-    box-shadow: 0 0 8px #00ffcc;
-  }
-  to {
-    box-shadow: 0 0 16px #00ffcc;
-  }
-}
-
 /* --- Timetable / Next Bus list --- */
 .departure-list {
   list-style: none;
@@ -277,17 +263,17 @@ audio {
   }
 }
 
-/* --- Marker Styling Improvements (v3.5) --- */
+/* --- Marker Styling Improvements (v3.8) --- */
 
-/* Your location marker */
+/* Your location marker — darker blue glow */
 .user-marker div {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #00bfff;
+  background: #0066ff;             /* darker blue */
   border: 3px solid white;
-  box-shadow: 0 0 15px #00bfff;
-  animation: pulse 1.2s infinite alternate;
+  box-shadow: 0 0 18px #0040ff;    /* deeper glow */
+  animation: pulse 1.3s infinite alternate;
 }
 
 @keyframes pulse {
@@ -295,12 +281,12 @@ audio {
   to { transform: scale(1.2); opacity: 1; }
 }
 
-/* Bus stop markers */
+/* Bus stop markers — purple glow */
 .stop-marker div {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #ffcc00;
+  background: #b266ff;             /* bright violet */
   border: 2px solid white;
-  box-shadow: 0 0 8px #ffcc00;
+  box-shadow: 0 0 10px #a040ff;
 }
