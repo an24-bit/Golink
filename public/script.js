@@ -1,6 +1,6 @@
 // =====================================
-//  GoLink — Live Bus Assistant (v3.9)
-//  Includes: Custom Icons + OSM Stops + Inline Timetable
+//  GoLink — Live Bus Assistant (v4.1)
+//  Compact Directional Edition
 //  Author: Ali
 // =====================================
 
@@ -18,14 +18,14 @@ let nearbyStops = [];
 // --- Custom Icons ---
 const userIcon = L.divIcon({
   className: "user-marker",
-  html: "<div></div>",
+  html: '<div style="width:18px;height:18px;border-radius:50%;background:#0099ff;border:3px solid #fff;box-shadow:0 0 15px #0099ff;animation:pulse 1.5s infinite alternate;"></div>',
   iconSize: [18, 18],
   iconAnchor: [9, 9],
 });
 
 const stopIcon = L.divIcon({
   className: "stop-marker",
-  html: "<div></div>",
+  html: '<div style="width:14px;height:14px;border-radius:50%;background:#b26aff;border:2px solid white;box-shadow:0 0 6px #b26aff;"></div>',
   iconSize: [14, 14],
   iconAnchor: [7, 7],
 });
@@ -70,16 +70,15 @@ async function initMap(lat, lon) {
     .bindPopup("📍 You are here")
     .openPopup();
 
-  await loadNearbyStops(lat, lon); // now uses OSM data
+  await loadNearbyStops(lat, lon);
   await updateLiveBuses(lat, lon);
   setInterval(() => updateLiveBuses(lat, lon), 30000);
 }
 
-// --- Load nearby bus stops (OSM Overpass API) ---
+// --- Load nearby stops (OSM Overpass API) ---
 async function loadNearbyStops(lat, lon) {
   try {
-    console.log("🚌 Fetching nearby OSM bus stops...");
-    const radius = 600; // metres
+    const radius = 500;
     const query = `
       [out:json];
       node["highway"="bus_stop"](around:${radius},${lat},${lon});
@@ -89,68 +88,89 @@ async function loadNearbyStops(lat, lon) {
     );
     const json = await res.json();
 
-    nearbyStops = json.elements || [];
+    nearbyStops = (json.elements || []).slice(0, 10); // limit to 10 stops
     console.log(`✅ Found ${nearbyStops.length} nearby stops.`);
 
     nearbyStops.forEach((stop) => {
       const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon })
         .addTo(map)
         .on("click", () =>
-          getDeparturesInline(stop.id, stop.tags.name || "Unnamed Stop", marker)
+          showInlineDepartures(stop.id, stop.tags.name || "Unnamed Stop", marker)
         );
     });
   } catch (err) {
-    console.error("❌ loadNearbyStops (OSM) error:", err);
+    console.error("❌ loadNearbyStops error:", err);
   }
 }
 
-// --- Inline Timetable Popup (TransportAPI departures) ---
-async function getDeparturesInline(stopId, stopName, marker) {
+// --- Inline Timetable Popup ---
+async function showInlineDepartures(stopId, stopName, marker) {
   try {
-    // fallback: if you still have /api/departures using TransportAPI for times
     const res = await fetch(`/api/departures/${stopId}`);
     const data = await res.json();
 
     if (!data.departures || Object.keys(data.departures).length === 0) {
-      marker
-        .bindPopup(`<b>${stopName}</b><br>No live data available.`)
-        .openPopup();
+      marker.bindPopup(`<b>${stopName}</b><br>No live data available.`).openPopup();
       return;
     }
 
-    let html = `<div style="min-width:180px">
-      <b>🚏 ${stopName}</b><br><hr style="border:0.5px solid #ccc">
-      <ul style="list-style:none;padding:0;margin:0;">`;
+    const now = new Date();
+    let html = `
+      <div style="min-width:200px;max-width:260px;text-align:left;">
+        <b>🚏 ${stopName}</b><br>
+        <small style="color:#aaa;">Live departures (next 2 hrs)</small>
+        <hr style="border:0.5px solid #333;margin:4px 0;">
+        <ul style="list-style:none;padding:0;margin:0;">`;
 
     let count = 0;
     for (const route in data.departures) {
       for (const bus of data.departures[route]) {
         if (count >= 5) break;
-        const time =
+        const rawTime =
           bus.expected_departure_time || bus.aimed_departure_time || "– –";
+        const [hour, min] = rawTime.split(":").map(Number);
+        const etaMin = hour && min ? calcETA(now, hour, min) : null;
         const dirArrow =
           bus.direction && /centre|city/i.test(bus.direction) ? "⬅️" : "➡️";
         html += `
           <li style="margin:4px 0;padding:3px 0;border-bottom:1px solid #222;">
             ${dirArrow} <b>${bus.line_name}</b> → ${bus.direction || ""}
-            <br><small>🕒 ${time}</small>
+            <br><small>🕒 ${rawTime}${
+              etaMin !== null ? ` (${etaMin} min)` : ""
+            }</small>
           </li>`;
         count++;
       }
       if (count >= 5) break;
     }
 
-    html += `</ul></div>`;
+    html += `</ul>
+      <hr style="border:0.5px solid #333;margin:6px 0;">
+      <button onclick="window.print()" style="margin-top:3px;padding:4px 8px;background:#444;color:white;border:none;border-radius:5px;cursor:pointer;">🖨️ Print</button>
+      <small style="display:block;margin-top:6px;color:#888;">Updated just now</small>
+      </div>`;
+
     marker.bindPopup(html).openPopup();
+
+    // Also show in compact response box under map
+    responseBox.innerHTML = html;
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   } catch (err) {
-    console.error("❌ getDeparturesInline error:", err);
-    marker
-      .bindPopup(`<b>${stopName}</b><br>Unable to fetch timetable.`)
-      .openPopup();
+    console.error("❌ showInlineDepartures error:", err);
+    marker.bindPopup(`<b>${stopName}</b><br>Unable to fetch timetable.`).openPopup();
   }
 }
 
-// --- Update live bus positions (still uses TransportAPI) ---
+// --- Helper: calculate minutes until departure ---
+function calcETA(now, hour, min) {
+  const dep = new Date(now);
+  dep.setHours(hour, min, 0, 0);
+  const diffMs = dep - now;
+  if (diffMs < 0) return null;
+  return Math.round(diffMs / 60000);
+}
+
+// --- Update live buses ---
 async function updateLiveBuses(lat, lon) {
   try {
     const res = await fetch(`/api/livebuses?lat=${lat}&lon=${lon}`);
@@ -158,7 +178,7 @@ async function updateLiveBuses(lat, lon) {
     if (!data.buses) return;
 
     const seen = new Set();
-    data.buses.slice(0, 20).forEach((bus) => {
+    data.buses.slice(0, 15).forEach((bus) => {
       seen.add(bus.id);
       const icon = L.divIcon({
         className: "bus-icon",
@@ -170,11 +190,7 @@ async function updateLiveBuses(lat, lon) {
       } else {
         const marker = L.marker([bus.lat, bus.lon], { icon })
           .addTo(map)
-          .bindPopup(
-            `<b>${bus.line}</b><br>${bus.direction || ""}<br>${
-              bus.distance ? bus.distance.toFixed(2) + " km away" : ""
-            }`
-          );
+          .bindPopup(`<b>${bus.line}</b><br>${bus.direction || ""}`);
         busMarkers[bus.id] = marker;
       }
     });
