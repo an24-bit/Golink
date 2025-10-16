@@ -1,6 +1,6 @@
 {
   "name": "golink",
-  "version": "3.3.0",
+  "version": "3.5.0",
   "description": "GoLink — Live UK Bus Assistant with AI, Voice, and Real-Time Tracking for Plymouth & the South West.",
   "main": "server.js",
   "type": "module",
@@ -15,8 +15,7 @@
     "fs-extra": "^11.2.0",
     "node-fetch": "^3.3.2",
     "openai": "^4.58.0",
-    "twilio": "^4.22.0",
-    "gtfs-realtime-bindings": "^1.0.0"
+    "twilio": "^4.22.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
@@ -28,22 +27,26 @@
     "golink",
     "bus",
     "uk",
-    "travel",
+    "transport",
     "ai",
     "voice",
     "assistant",
     "leaflet",
-    "transportapi",
     "render",
-    "plymouth"
+    "plymouth",
+    "travel",
+    "transportapi"
   ],
   "author": "Ali",
   "license": "MIT",
-  "render": {
-    "startCommand": "node server.js"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/an24-bit/golink.git"
+  },
+  "render": {
+    "startCommand": "node server.js",
+    "env": {
+      "NODE_ENV": "production"
+    }
   }
 }
