@@ -1,5 +1,6 @@
 // =====================================
-//  GoLink — Live Bus Assistant (v3.6: Nearby Stops + Custom Icons + Live Tracking)
+//  GoLink — Live Bus Assistant (v3.7)
+//  Includes: Custom Icons + Nearby Stops + Live Tracking
 //  Author: Ali
 // =====================================
 
@@ -13,6 +14,21 @@ let userLocation = { lat: null, lon: null };
 let map;
 let busMarkers = {};
 let nearbyStops = [];
+
+// --- Custom Icons ---
+const userIcon = L.divIcon({
+  className: "user-marker",
+  html: "<div></div>",
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+const stopIcon = L.divIcon({
+  className: "stop-marker",
+  html: "<div></div>",
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
 
 // --- Wait until page fully loads ---
 window.addEventListener("load", () => {
@@ -62,13 +78,7 @@ async function initMap(lat, lon) {
     attribution: "© OpenStreetMap contributors",
   }).addTo(map);
 
-  // --- Glowing user marker (cyan) ---
-  const userIcon = L.divIcon({
-    className: "user-marker",
-    html: '<div style="width:18px;height:18px;border-radius:50%;background:#00ffcc;border:3px solid #fff;box-shadow:0 0 12px #00ffcc;"></div>',
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
+  // --- Your location marker ---
   const userMarker = L.marker([lat, lon], { icon: userIcon })
     .addTo(map)
     .bindPopup("📍 You are here")
@@ -93,14 +103,6 @@ async function loadNearbyStops(lat, lon) {
 
     nearbyStops = data.member.slice(0, 15);
     console.log(`✅ Found ${nearbyStops.length} nearby stops.`);
-
-    // --- Orange stop markers ---
-    const stopIcon = L.divIcon({
-      className: "stop-marker",
-      html: '<div style="width:14px;height:14px;border-radius:50%;background:orange;border:2px solid white;box-shadow:0 0 6px orange;"></div>',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
-    });
 
     nearbyStops.forEach((stop) => {
       if (!stop.latitude || !stop.longitude || !stop.atcocode) return;
@@ -141,10 +143,15 @@ async function getDepartures(atcocode, stopName = "") {
 
     for (const route in data.departures) {
       data.departures[route].slice(0, 3).forEach((bus) => {
+        const time =
+          bus.expected_departure_time ||
+          bus.aimed_departure_time ||
+          "No time available";
+
         html += `
           <li>
             <b>${bus.line_name}</b> → ${bus.direction}
-            <br><small>Expected: ${bus.expected_departure_time}</small>
+            <br><small>🕒 ${time}</small>
           </li>`;
       });
     }
@@ -181,7 +188,11 @@ async function updateLiveBuses(lat, lon) {
       } else {
         const marker = L.marker([bus.lat, bus.lon], { icon })
           .addTo(map)
-          .bindPopup(`<b>${bus.line}</b><br>${bus.direction || ""}<br>${bus.distance ? bus.distance.toFixed(2) + " km away" : ""}`);
+          .bindPopup(
+            `<b>${bus.line}</b><br>${bus.direction || ""}<br>${
+              bus.distance ? bus.distance.toFixed(2) + " km away" : ""
+            }`
+          );
         busMarkers[bus.id] = marker;
       }
     });
@@ -193,7 +204,6 @@ async function updateLiveBuses(lat, lon) {
         delete busMarkers[id];
       }
     });
-
   } catch (err) {
     console.warn("❌ updateLiveBuses error:", err);
   }
