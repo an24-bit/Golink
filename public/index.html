@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GoLink — Live UK Bus Assistant</title>
 
-  <!-- ✅ Correct CSS link -->
+  <!-- Core Styles -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- ✅ Leaflet Map (secure version) -->
+  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -22,7 +22,45 @@
   ></script>
 
   <style>
-    /* Simple pulse for LIVE indicator */
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #0b0c10;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 10px 0;
+    }
+
+    #map {
+      height: 70vh;
+      width: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .chat-box {
+      margin-top: 10px;
+    }
+
+    input, button {
+      padding: 8px;
+      margin: 5px;
+      border-radius: 6px;
+      border: none;
+    }
+
+    #responseBox {
+      background: #111;
+      margin: 10px auto;
+      padding: 10px;
+      max-width: 90%;
+      border-radius: 8px;
+    }
+
     #live-indicator {
       display: inline-block;
       margin-left: 8px;
@@ -34,6 +72,7 @@
       animation: blink 1s infinite alternate;
       vertical-align: middle;
     }
+
     @keyframes blink {
       from { opacity: 0.3; transform: scale(0.9); }
       to { opacity: 1; transform: scale(1.2); }
@@ -54,11 +93,7 @@
 
   <!-- Chat input -->
   <div class="chat-box">
-    <input
-      id="question"
-      type="text"
-      placeholder="Ask about routes, next buses, or stops..."
-    />
+    <input id="question" type="text" placeholder="Ask about routes, next buses, or stops..." />
     <button id="askBtn">Ask</button>
     <button id="voiceBtn" title="Speak your question">🎤</button>
   </div>
@@ -71,21 +106,33 @@
   <button id="speakBtn">🔊 Read Aloud</button>
   <audio id="audioBox" controls hidden></audio>
 
-  <!-- ✅ Main JS -->
-  <script src="script.js"></script>
-
-  <!-- ✅ Live indicator pulse logic -->
+  <!-- Main JS -->
   <script>
-    const liveIndicator = document.getElementById("live-indicator");
-    function pulseLiveIndicator() {
-      liveIndicator.style.boxShadow = "0 0 10px lime";
-      liveIndicator.style.background = "lime";
-      setTimeout(() => {
-        liveIndicator.style.boxShadow = "0 0 6px red";
-        liveIndicator.style.background = "red";
-      }, 800);
-    }
-    window.pulseLiveIndicator = pulseLiveIndicator;
+    document.addEventListener("DOMContentLoaded", () => {
+      // --- Initialise base map ---
+      const map = L.map("map").setView([50.3755, -4.1427], 13); // Plymouth
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+
+      // --- Try to locate user ---
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            map.setView([latitude, longitude], 14);
+            L.marker([latitude, longitude]).addTo(map).bindPopup("You are here");
+          },
+          (err) => {
+            console.warn("Geolocation error:", err.message);
+          }
+        );
+      } else {
+        console.warn("Geolocation not supported");
+      }
+    });
   </script>
 </body>
 </html>
